@@ -1997,18 +1997,101 @@ def build_bearer_headers(api_key: str, model: str | None = None) -> dict:
     return headers
 
 
+def safe_json_loads_lenient(text: str):
+    """Parse JSON from strict JSON, first JSON object, or simple SSE data lines.
+
+    Some OpenAI-compatible gateways return a valid JSON object followed by extra
+    text/newlines, or return SSE-like `data: {...}` lines. Python's standard
+    `response.json()` raises `Extra data` in those cases. This helper keeps the
+    app usable and falls back gracefully.
+    """
+    raw = str(text or "").strip()
+    if not raw:
+        raise ValueError("Respons kosong.")
+    try:
+        return json.loads(raw)
+    except Exception as first_exc:
+        # Server-sent-event style: data: {json}
+        data_lines = []
+        for line in raw.splitlines():
+            line = line.strip()
+            if line.startswith("data:"):
+                content = line[5:].strip()
+                if content and content != "[DONE]":
+                    data_lines.append(content)
+        for item in reversed(data_lines):
+            try:
+                return json.loads(item)
+            except Exception:
+                continue
+
+        # Concatenated JSON / JSON followed by text: decode only the first object.
+        try:
+            decoder = json.JSONDecoder()
+            payload, _ = decoder.raw_decode(raw)
+            return payload
+        except Exception:
+            raise first_exc
+
+
+def response_payload_lenient(response):
+    """Return parsed JSON payload if possible, otherwise None."""
+    try:
+        return response.json()
+    except Exception:
+        try:
+            return safe_json_loads_lenient(getattr(response, "text", ""))
+        except Exception:
+            return None
+
+
+def extract_model_ids_from_payload_or_text(payload=None, text: str = "") -> list[str]:
+    """Extract model IDs from common JSON structures or SlashAI-style text lists."""
+    models = []
+    if isinstance(payload, dict):
+        candidates = payload.get("data") or payload.get("models") or payload.get("model") or []
+        if isinstance(candidates, str):
+            candidates = [candidates]
+        if isinstance(candidates, list):
+            for item in candidates:
+                if isinstance(item, dict):
+                    mid = item.get("id") or item.get("name") or item.get("model")
+                    if mid:
+                        models.append(str(mid))
+                elif isinstance(item, str):
+                    models.append(item)
+    elif isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, dict):
+                mid = item.get("id") or item.get("name") or item.get("model")
+                if mid:
+                    models.append(str(mid))
+            elif isinstance(item, str):
+                models.append(item)
+
+    raw_text = str(text or "")
+    if raw_text:
+        # Supports the user's pasted SlashAI list: "slashai/gpt-5.5", etc.
+        models.extend(re.findall(r"slashai/[A-Za-z0-9_.\-]+", raw_text))
+        # Also supports plain OpenAI-compatible IDs if a provider returns one per line.
+        for line in raw_text.splitlines():
+            candidate = line.strip().strip("`*•- ")
+            if re.match(r"^(gpt|o\d|claude|gemini|deepseek|qwen|glm|kimi|minimax|mimo|step)[A-Za-z0-9_./\-]*$", candidate, re.I):
+                models.append(candidate)
+
+    return sort_model_ids([m for m in dict.fromkeys(models) if is_probable_text_model(m)])
+
+
 def compact_api_error(response) -> str:
     """Create a safe error message without exposing key/header values."""
-    try:
-        payload = response.json()
-        if isinstance(payload, dict):
-            detail = payload.get("error") or payload.get("message") or payload
-            if isinstance(detail, dict):
-                detail = detail.get("message") or detail.get("type") or detail
-            return str(detail)[:500]
-    except Exception:
-        pass
-    return str(getattr(response, "text", ""))[:500]
+    payload = response_payload_lenient(response)
+    if isinstance(payload, dict):
+        detail = payload.get("error") or payload.get("message") or payload
+        if isinstance(detail, dict):
+            detail = detail.get("message") or detail.get("type") or detail
+        return str(detail)[:500]
+    text = str(getattr(response, "text", "") or "").strip()
+    return text[:500] if text else f"HTTP {getattr(response, 'status_code', '')}"
 
 
 def build_ai_project_context(max_records: int = 25) -> str:
@@ -2264,16 +2347,19 @@ def list_openai_models_with_key(api_key: str, api_base: str | None = None) -> tu
             st.session_state.openai_models_error = msg
             return False, msg
 
-        payload = response.json()
-        raw = []
-        for item in payload.get("data", []) if isinstance(payload, dict) else []:
-            if isinstance(item, dict) and item.get("id"):
-                raw.append(str(item.get("id")))
-        models = sort_model_ids([m for m in raw if is_probable_text_model(m)])
+        payload = response_payload_lenient(response)
+        models = extract_model_ids_from_payload_or_text(payload, getattr(response, "text", ""))
         if not models:
-            msg = "Model text-generation tidak ditemukan pada API base/API key ini. Coba isi model secara manual."
+            msg = (
+                "Endpoint /v1/models tidak mengembalikan daftar model dalam format JSON/list yang bisa dibaca. "
+                "Ini tidak menghambat Online AI; sistem tetap memakai daftar model bawaan SlashAI. "
+                "Anda juga bisa memilih/menulis model manual seperti slashai/gpt-5.5-instant atau slashai/gpt-5.5."
+            )
             st.session_state.openai_models_error = msg
-            return False, msg
+            st.session_state.openai_available_models = sort_model_ids(SLASHAI_ALL_MODELS)
+            st.session_state.openai_models_last_checked = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            st.session_state.openai_models_api_base = base
+            return True, st.session_state.openai_available_models
         st.session_state.openai_available_models = models
         st.session_state.openai_models_last_checked = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         st.session_state.openai_models_api_base = base
@@ -2370,25 +2456,35 @@ def call_openai_responses_api(api_key: str, model: str, user_prompt: str, api_ba
                 return False, "Limit/rate limit API tercapai atau saldo/quota akun API tidak mencukupi."
             return False, f"Gagal membuat AI insight dari Chat Completions API ({response.status_code}): {detail}"
 
-        payload = response.json()
-        choices = payload.get("choices", []) if isinstance(payload, dict) else []
-        if choices:
-            message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
-            content = message.get("content")
-            if isinstance(content, list):
-                # Some OpenAI-compatible APIs return content parts. Join text-like parts.
-                parts = []
-                for part in content:
-                    if isinstance(part, dict):
-                        parts.append(str(part.get("text") or part.get("content") or ""))
-                    else:
-                        parts.append(str(part))
-                content = "\n".join([p for p in parts if p])
-            if content:
-                return True, str(content)
-            if choices[0].get("text"):
-                return True, str(choices[0].get("text"))
-        return True, json.dumps(payload, ensure_ascii=False, indent=2)
+        payload = response_payload_lenient(response)
+        if isinstance(payload, dict):
+            choices = payload.get("choices", [])
+            if choices:
+                message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
+                content = message.get("content") if isinstance(message, dict) else None
+                if isinstance(content, list):
+                    # Some OpenAI-compatible APIs return content parts. Join text-like parts.
+                    parts = []
+                    for part in content:
+                        if isinstance(part, dict):
+                            parts.append(str(part.get("text") or part.get("content") or ""))
+                        else:
+                            parts.append(str(part))
+                    content = "\n".join([p for p in parts if p])
+                if content:
+                    return True, str(content)
+                if isinstance(choices[0], dict) and choices[0].get("text"):
+                    return True, str(choices[0].get("text"))
+            # Some providers use alternative keys.
+            for key in ["content", "text", "message", "response", "output"]:
+                if payload.get(key):
+                    return True, str(payload.get(key))
+            return True, json.dumps(payload, ensure_ascii=False, indent=2)
+
+        raw_text = str(getattr(response, "text", "") or "").strip()
+        if raw_text:
+            return True, raw_text[:8000]
+        return False, "API mengembalikan respons kosong atau format yang belum dikenali."
     except requests.exceptions.RequestException as exc:
         return False, f"Gagal terhubung ke API base {base}: {exc}"
     except Exception as exc:
@@ -2560,9 +2656,14 @@ def render_sidebar():
             if st.button("🔎 Cek model tersedia dari API key", use_container_width=True):
                 ok, result = list_openai_models_with_key(api_key, get_personal_api_base_url())
                 if ok:
-                    st.success(f"Berhasil membaca {len(result)} model text-generation dari API key.")
+                    if st.session_state.get("openai_models_error"):
+                        st.warning(st.session_state.openai_models_error)
+                        st.info(f"Daftar bawaan/fallback aktif: {len(result)} model dapat dipilih.")
+                    else:
+                        st.success(f"Berhasil membaca {len(result)} model text-generation dari API key.")
                 else:
-                    st.error(result)
+                    st.warning(result)
+                    st.info("Sistem tetap bisa dipakai dengan daftar model bawaan SlashAI atau pilihan manual.")
 
         available_models = st.session_state.get("openai_available_models", [])
         if available_models:

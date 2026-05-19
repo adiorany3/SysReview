@@ -88,6 +88,10 @@ Contoh otomatis tersedia untuk:
   - **Pilih manual**: pengguna memilih dari daftar model API jika endpoint `/v1/models` tersedia. Jika tidak, sistem menampilkan daftar bawaan SlashAI yang sudah dimasukkan ke aplikasi.
 - Tombol **Cek model tersedia dari API key** membaca daftar model text-generation dari endpoint `GET https://api.slashai.my.id/v1/models` bila provider mendukung. Jika tidak mendukung, user tetap bisa memilih dari daftar bawaan SlashAI atau mengetik model manual.
 - Jika daftar model belum dicek atau gagal dibaca, sistem memakai daftar bawaan SlashAI dan fallback default agar fitur tetap bisa dipakai.
+
+### Catatan koneksi SlashAI `/v1/models`
+
+Beberapa gateway OpenAI-compatible dapat mengembalikan respons `/v1/models` dalam format teks, daftar Markdown, SSE, atau JSON dengan tambahan data sehingga parser JSON standar memunculkan error seperti `Extra data: line 2 column 1`. Versi ini sudah dibuat toleran terhadap kondisi tersebut. Jika `/v1/models` tidak mengembalikan JSON tunggal yang bersih, aplikasi tidak berhenti; sistem otomatis memakai daftar model bawaan SlashAI dan pengguna tetap bisa menjalankan Online AI melalui endpoint `POST /v1/chat/completions`.
 - Insight online yang dapat dibuat:
   - Novelty & Gap Insight
   - Discussion Draft
