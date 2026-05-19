@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 APP_TITLE = "Agro Systematic Review Builder"
-APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + Optional Personal AI Edition"
+APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + Personal AI Model Selector Edition"
 
 ARTICLE_COLUMNS = [
     "id", "title", "authors", "year", "journal", "doi", "country", "study_design",
@@ -450,7 +450,10 @@ def init_state():
         },
         "ai_config": {
             "mode": "Offline Mode",
+            "model_selection": "Auto pilih model hemat biaya",
             "model": "gpt-4.1-mini",
+            "manual_model": "gpt-4.1-mini",
+            "selected_model_source": "fallback",
         },
         "ai_outputs": {},
     }
@@ -1815,8 +1818,12 @@ def download_df_button(label, df, filename):
 
 
 def clear_personal_api_key():
-    """Remove the user-provided API key from the current Streamlit session only."""
-    for key in ["personal_openai_api_key", "openai_api_key_input"]:
+    """Remove the user-provided API key and cached model list from the current Streamlit session only."""
+    for key in [
+        "personal_openai_api_key", "openai_api_key_input",
+        "openai_available_models", "openai_models_last_checked", "openai_models_error",
+        "manual_model_select", "manual_model_text",
+    ]:
         if key in st.session_state:
             del st.session_state[key]
 
@@ -1868,6 +1875,131 @@ def build_ai_project_context(max_records: int = 25) -> str:
     }
     return json.dumps(payload, ensure_ascii=False, indent=2, default=str)
 
+
+
+ECONOMY_MODEL_FALLBACK = "gpt-4.1-mini"
+QUALITY_MODEL_FALLBACK = "gpt-4.1"
+ECONOMY_MODEL_PRIORITY = [
+    "gpt-5.5-mini", "gpt-5.4-mini", "gpt-5.3-mini", "gpt-5.2-mini", "gpt-5.1-mini", "gpt-5-mini",
+    "gpt-4.1-mini", "gpt-4o-mini", "o4-mini", "o3-mini",
+]
+QUALITY_MODEL_PRIORITY = [
+    "gpt-5.5", "gpt-5.4", "gpt-5.3", "gpt-5.2", "gpt-5.1", "gpt-5",
+    "gpt-4.1", "gpt-4o", "o3", "o4-mini", "gpt-4.1-mini",
+]
+
+
+def is_probable_text_model(model_id: str) -> bool:
+    """Keep model choices relevant for text insight generation."""
+    mid = str(model_id or "").lower()
+    if not mid:
+        return False
+    excluded_fragments = [
+        "embedding", "moderation", "tts", "transcribe", "whisper", "image", "dall", "realtime",
+        "audio", "vision", "computer-use", "search", "guardrail",
+    ]
+    if any(fragment in mid for fragment in excluded_fragments):
+        return False
+    return mid.startswith("gpt-") or re.match(r"^o\d", mid) is not None
+
+
+def sort_model_ids(model_ids: list[str]) -> list[str]:
+    """Sort with common text-generation models first, while keeping the list deterministic."""
+    cleaned = sorted({str(m).strip() for m in model_ids if str(m).strip()})
+
+    def rank(mid: str):
+        m = mid.lower()
+        if m.startswith("gpt-5"):
+            group = 0
+        elif m.startswith("gpt-4.1"):
+            group = 1
+        elif m.startswith("gpt-4o"):
+            group = 2
+        elif re.match(r"^o\d", m):
+            group = 3
+        else:
+            group = 9
+        mini_bonus = 0 if "mini" in m else 1
+        return (group, mini_bonus, m)
+
+    return sorted(cleaned, key=rank)
+
+
+def list_openai_models_with_key(api_key: str) -> tuple[bool, list[str] | str]:
+    """List text-capable model IDs available to the user's temporary API key."""
+    if not api_key:
+        return False, "API key belum diisi."
+    try:
+        from openai import OpenAI
+    except Exception:
+        return False, "Package 'openai' belum terpasang. Jalankan: pip install openai"
+    try:
+        client = OpenAI(api_key=api_key)
+        response = client.models.list()
+        raw = []
+        for item in getattr(response, "data", []) or []:
+            mid = getattr(item, "id", None)
+            if mid:
+                raw.append(str(mid))
+        models = sort_model_ids([m for m in raw if is_probable_text_model(m)])
+        if not models:
+            return False, "Model text-generation tidak ditemukan pada API key ini. Coba isi model secara manual."
+        st.session_state.openai_available_models = models
+        st.session_state.openai_models_last_checked = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if "openai_models_error" in st.session_state:
+            del st.session_state["openai_models_error"]
+        return True, models
+    except Exception as exc:
+        msg = str(exc)
+        if "api_key" in msg.lower() or "authentication" in msg.lower() or "401" in msg:
+            msg = "API key tidak valid atau tidak memiliki izin untuk membaca daftar model."
+        elif "rate" in msg.lower() or "quota" in msg.lower() or "429" in msg:
+            msg = "Limit/rate limit API tercapai atau quota akun tidak mencukupi saat mengecek model."
+        else:
+            msg = f"Gagal membaca daftar model: {exc}"
+        st.session_state.openai_models_error = msg
+        return False, msg
+
+
+def choose_model_from_available(available_models: list[str], strategy: str) -> tuple[str, str]:
+    """Resolve the effective model from automatic/manual strategy."""
+    available = sort_model_ids(available_models or [])
+    available_lc = {m.lower(): m for m in available}
+    priority = ECONOMY_MODEL_PRIORITY if strategy == "Auto pilih model hemat biaya" else QUALITY_MODEL_PRIORITY
+
+    for candidate in priority:
+        if candidate.lower() in available_lc:
+            return available_lc[candidate.lower()], "daftar model API"
+    for candidate in priority:
+        prefix_matches = [m for m in available if m.lower().startswith(candidate.lower() + "-")]
+        if prefix_matches:
+            return prefix_matches[0], "daftar model API"
+    if available:
+        # For economy, prefer mini/smaller if present; for quality, prefer the first ranked high-capability model.
+        if strategy == "Auto pilih model hemat biaya":
+            mini = [m for m in available if "mini" in m.lower()]
+            if mini:
+                return mini[0], "daftar model API"
+        return available[0], "daftar model API"
+    fallback = ECONOMY_MODEL_FALLBACK if strategy == "Auto pilih model hemat biaya" else QUALITY_MODEL_FALLBACK
+    return fallback, "fallback default"
+
+
+def get_effective_ai_model(api_key: str = "") -> tuple[str, str]:
+    """Return model ID and source without persisting API key."""
+    ai_cfg = st.session_state.get("ai_config", {})
+    strategy = ai_cfg.get("model_selection", "Auto pilih model hemat biaya")
+    available = st.session_state.get("openai_available_models", [])
+
+    if strategy == "Pilih manual":
+        manual = str(ai_cfg.get("manual_model") or ai_cfg.get("model") or ECONOMY_MODEL_FALLBACK).strip()
+        return manual or ECONOMY_MODEL_FALLBACK, "pilihan manual"
+
+    model, source = choose_model_from_available(available, strategy)
+    ai_cfg["model"] = model
+    ai_cfg["selected_model_source"] = source
+    st.session_state.ai_config = ai_cfg
+    return model, source
 
 def call_openai_responses_api(api_key: str, model: str, user_prompt: str) -> tuple[bool, str]:
     """Call OpenAI Responses API using the user's temporary personal API key."""
@@ -1952,7 +2084,7 @@ def render_online_ai_insight_panel(location: str = ""):
     ai_cfg = st.session_state.get("ai_config", {})
     mode = ai_cfg.get("mode", "Offline Mode")
     api_key = get_personal_api_key()
-    model = ai_cfg.get("model", "gpt-4.1-mini")
+    model, model_source = get_effective_ai_model(api_key)
 
     st.subheader("Online AI Insight Opsional")
     st.caption("Fitur ini opsional. Tanpa API key, seluruh sistem tetap berjalan menggunakan Offline Mode berbasis rule, checklist, dan template.")
@@ -1966,7 +2098,8 @@ def render_online_ai_insight_panel(location: str = ""):
         return
 
     st.success("Online AI Mode aktif menggunakan API key pribadi dari sesi ini. API key tidak disimpan ke project state, ZIP export, XLSX, DOCX, atau Markdown.")
-    st.caption("Data project yang dikirim ke API mengikuti pilihan tombol di bawah. Pastikan tidak ada data sensitif yang tidak ingin Anda kirim ke layanan API.")
+    st.caption(f"Model yang akan dipakai: `{model}` ({model_source}). Data project hanya dikirim saat Anda menekan tombol insight.")
+    st.caption("Pastikan tidak ada data sensitif yang tidak ingin Anda kirim ke layanan API.")
 
     task = st.selectbox(
         "Pilih jenis insight online",
@@ -2006,8 +2139,10 @@ def reset_project_state():
     keys_to_remove = [
         "project", "criteria", "terms", "articles", "quality", "extraction",
         "prisma_manual", "notes", "sync_config", "ai_config", "ai_outputs",
-        "personal_openai_api_key", "openai_api_key_input", "reset_confirm_checkbox",
-        "reset_confirm_text", "reset_success_message",
+        "personal_openai_api_key", "openai_api_key_input", "openai_available_models",
+        "openai_models_last_checked", "openai_models_error", "manual_model_select",
+        "manual_model_text", "reset_confirm_checkbox", "reset_confirm_text",
+        "reset_success_message",
     ]
     for key in keys_to_remove:
         if key in st.session_state:
@@ -2046,23 +2181,70 @@ def render_sidebar():
             key="ai_mode_radio",
             help="Offline Mode tidak membutuhkan API. Online AI Mode memakai API key pribadi user hanya selama sesi berjalan.",
         )
-        ai_cfg["model"] = st.text_input(
-            "Model OpenAI",
-            value=ai_cfg.get("model", "gpt-4.1-mini"),
-            key="ai_model_input",
-            help="Gunakan model yang tersedia pada akun API Anda. Contoh umum: gpt-4.1-mini atau model lain yang Anda miliki aksesnya.",
-        ).strip() or "gpt-4.1-mini"
+
+        model_selection_options = ["Auto pilih model hemat biaya", "Auto pilih model kualitas tinggi", "Pilih manual"]
+        current_selection = ai_cfg.get("model_selection", "Auto pilih model hemat biaya")
+        ai_cfg["model_selection"] = st.radio(
+            "Pemilihan model",
+            model_selection_options,
+            index=model_selection_options.index(current_selection) if current_selection in model_selection_options else 0,
+            key="ai_model_selection_radio",
+            help="Mode otomatis memilih dari daftar model yang tersedia pada API key. Jika daftar belum dicek, aplikasi memakai fallback default.",
+        )
+
         if st.button("Hapus API key dari sesi ini", use_container_width=True):
             clear_personal_api_key()
-            st.success("API key pribadi sudah dihapus dari sesi aplikasi.")
+            st.success("API key pribadi dan cache daftar model sudah dihapus dari sesi aplikasi.")
             st.rerun()
+
         st.text_input(
             "OpenAI API Key pribadi",
             type="password",
             key="personal_openai_api_key",
             help="Opsional. API key hanya dipakai selama sesi ini dan tidak disimpan ke project state, ZIP export, XLSX, DOCX, atau Markdown.",
         )
-        if ai_cfg.get("mode") == "Online AI Mode" and get_personal_api_key():
+        api_key = get_personal_api_key()
+
+        if api_key:
+            if st.button("🔎 Cek model tersedia dari API key", use_container_width=True):
+                ok, result = list_openai_models_with_key(api_key)
+                if ok:
+                    st.success(f"Berhasil membaca {len(result)} model text-generation dari API key.")
+                else:
+                    st.error(result)
+
+        available_models = st.session_state.get("openai_available_models", [])
+        if available_models:
+            last_checked = st.session_state.get("openai_models_last_checked", "")
+            st.caption(f"Daftar model terakhir dicek: {last_checked}. Total model text: {len(available_models)}")
+        elif st.session_state.get("openai_models_error"):
+            st.caption(st.session_state.openai_models_error)
+
+        if ai_cfg.get("model_selection") == "Pilih manual":
+            if available_models:
+                current_manual = ai_cfg.get("manual_model", ai_cfg.get("model", ECONOMY_MODEL_FALLBACK))
+                default_index = available_models.index(current_manual) if current_manual in available_models else 0
+                ai_cfg["manual_model"] = st.selectbox(
+                    "Pilih model manual dari API key",
+                    available_models,
+                    index=default_index,
+                    key="manual_model_select",
+                    help="Daftar ini berasal dari API key yang sedang aktif pada sesi ini.",
+                )
+            else:
+                ai_cfg["manual_model"] = st.text_input(
+                    "Tulis model manual",
+                    value=ai_cfg.get("manual_model", ECONOMY_MODEL_FALLBACK),
+                    key="manual_model_text",
+                    help="Isi manual jika belum mengecek daftar model. Contoh: gpt-4.1-mini atau model lain yang tersedia pada akun API Anda.",
+                ).strip() or ECONOMY_MODEL_FALLBACK
+        else:
+            effective_model, source = get_effective_ai_model(api_key)
+            ai_cfg["model"] = effective_model
+            ai_cfg["selected_model_source"] = source
+            st.caption(f"Model terpilih otomatis: `{effective_model}` ({source}).")
+
+        if ai_cfg.get("mode") == "Online AI Mode" and api_key:
             st.success("Online AI aktif untuk sesi ini.")
         elif ai_cfg.get("mode") == "Online AI Mode":
             st.warning("Online AI aktif, tetapi API key belum diisi.")
