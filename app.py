@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 APP_TITLE = "Agro & Biosystems Systematic Review Builder"
-APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + Personal Chat Completions API + Biosystems Edition"
+APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + SlashAI/OpenAI-Compatible Chat Completions + Biosystems Edition"
 
 ARTICLE_COLUMNS = [
     "id", "title", "authors", "year", "journal", "doi", "country", "study_design",
@@ -513,8 +513,8 @@ def init_state():
         "ai_config": {
             "mode": "Offline Mode",
             "model_selection": "Auto pilih model hemat biaya",
-            "model": "gpt-4.1-mini",
-            "manual_model": "gpt-4.1-mini",
+            "model": "slashai/gpt-5.5-instant",
+            "manual_model": "slashai/gpt-5.5-instant",
             "selected_model_source": "fallback",
         },
         "ai_outputs": {},
@@ -1946,11 +1946,22 @@ def get_personal_api_key() -> str:
 
 
 def normalize_api_base_url(api_base: str) -> str:
-    """Normalize user supplied API base so requests use {base}/v1/... consistently."""
+    """Normalize user supplied API base so requests use {base}/v1/... consistently.
+
+    Users may paste either a base URL such as `https://api-base`, `https://api-base/v1`,
+    or the full endpoint `https://api-base/v1/chat/completions`. This function safely
+    reduces all of them to `https://api-base`.
+    """
     base = str(api_base or "https://api.openai.com").strip().rstrip("/")
     if not base:
         base = "https://api.openai.com"
-    if base.endswith("/v1"):
+    lower = base.lower()
+    for suffix in ["/v1/chat/completions", "/chat/completions", "/v1/models", "/models"]:
+        if lower.endswith(suffix):
+            base = base[: -len(suffix)].rstrip("/")
+            lower = base.lower()
+            break
+    if lower.endswith("/v1"):
         base = base[:-3].rstrip("/")
     return base
 
@@ -1968,11 +1979,20 @@ def models_url(api_base: str) -> str:
     return f"{normalize_api_base_url(api_base)}/v1/models"
 
 
-def build_bearer_headers(api_key: str) -> dict:
-    return {
+def build_bearer_headers(api_key: str, model: str | None = None) -> dict:
+    """Build headers for OpenAI-compatible APIs.
+
+    Some gateway providers, including SlashAI-style routers, may document the model as
+    a request header. The app therefore sends the selected model in the JSON body
+    and, when available, also in a safe `model` header for compatibility.
+    """
+    headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+    if model:
+        headers["model"] = str(model)
+    return headers
 
 
 def compact_api_error(response) -> str:
@@ -2033,21 +2053,134 @@ def build_ai_project_context(max_records: int = 25) -> str:
 
 
 
-ECONOMY_MODEL_FALLBACK = "gpt-4.1-mini"
-QUALITY_MODEL_FALLBACK = "gpt-4.1"
+SLASHAI_MODEL_CATALOG = {
+    "Claude": [
+        "slashai/claude-haiku-4.5",
+        "slashai/claude-opus-4.5",
+        "slashai/claude-opus-4.6",
+        "slashai/claude-opus-4.7",
+        "slashai/claude-sonnet-4.5",
+        "slashai/claude-sonnet-4.6",
+        "slashai/claude-sonnet-4.7",
+    ],
+    "GPT / Codex": [
+        "slashai/gpt-5-codex",
+        "slashai/gpt-5-codex-mini",
+        "slashai/gpt-5-codex-mini-review",
+        "slashai/gpt-5-codex-review",
+        "slashai/gpt-5-mini",
+        "slashai/gpt-5-nano",
+        "slashai/gpt-5.1",
+        "slashai/gpt-5.1-codex",
+        "slashai/gpt-5.1-codex-max",
+        "slashai/gpt-5.1-codex-max-review",
+        "slashai/gpt-5.1-codex-mini",
+        "slashai/gpt-5.1-codex-mini-high",
+        "slashai/gpt-5.1-codex-mini-high-review",
+        "slashai/gpt-5.1-codex-mini-review",
+        "slashai/gpt-5.1-codex-review",
+        "slashai/gpt-5.1-review",
+        "slashai/gpt-5.2",
+        "slashai/gpt-5.2-codex",
+        "slashai/gpt-5.2-codex-review",
+        "slashai/gpt-5.2-review",
+        "slashai/gpt-5.3-codex",
+        "slashai/gpt-5.3-codex-high",
+        "slashai/gpt-5.3-codex-high-review",
+        "slashai/gpt-5.3-codex-low",
+        "slashai/gpt-5.3-codex-low-review",
+        "slashai/gpt-5.3-codex-none",
+        "slashai/gpt-5.3-codex-none-review",
+        "slashai/gpt-5.3-codex-review",
+        "slashai/gpt-5.3-codex-spark",
+        "slashai/gpt-5.3-codex-spark-review",
+        "slashai/gpt-5.3-codex-xhigh",
+        "slashai/gpt-5.3-codex-xhigh-review",
+        "slashai/gpt-5.4",
+        "slashai/gpt-5.4-mini",
+        "slashai/gpt-5.4-nano",
+        "slashai/gpt-5.4-pro",
+        "slashai/gpt-5.4-review",
+        "slashai/gpt-5.5",
+        "slashai/gpt-5.5-instant",
+        "slashai/gpt-5.5-review",
+    ],
+    "DeepSeek": [
+        "slashai/deepseek-3.2",
+        "slashai/deepseek-v3.2",
+        "slashai/deepseek-v4-flash",
+        "slashai/deepseek-v4-pro",
+    ],
+    "Gemini": [
+        "slashai/gemini-3-flash",
+        "slashai/gemini-3.1-pro",
+    ],
+    "Kimi": [
+        "slashai/Kimi-K2.5",
+        "slashai/Kimi-K2.6",
+    ],
+    "Qwen": [
+        "slashai/qwen3-coder-next",
+        "slashai/Qwen3.6-Max-Preview",
+        "slashai/Qwen3.6-Plus",
+    ],
+    "GLM": [
+        "slashai/GLM-5",
+        "slashai/GLM-5.1",
+    ],
+    "MiniMax": [
+        "slashai/MiniMax-M2.5",
+        "slashai/MiniMax-M2.7",
+    ],
+    "MiMo": [
+        "slashai/mimo-v2-flash",
+        "slashai/mimo-v2-omni",
+        "slashai/mimo-v2-pro",
+        "slashai/mimo-v2.5",
+        "slashai/mimo-v2.5-pro",
+    ],
+    "Step": [
+        "slashai/Step-3.5-Flash",
+    ],
+}
+
+SLASHAI_ALL_MODELS = [m for group in SLASHAI_MODEL_CATALOG.values() for m in group]
+
+ECONOMY_MODEL_FALLBACK = "slashai/gpt-5.5-instant"
+QUALITY_MODEL_FALLBACK = "slashai/gpt-5.5"
 ECONOMY_MODEL_PRIORITY = [
-    "gpt-5.5-mini", "gpt-5.4-mini", "gpt-5.3-mini", "gpt-5.2-mini", "gpt-5.1-mini", "gpt-5-mini",
-    "gpt-4.1-mini", "gpt-4o-mini", "o4-mini", "o3-mini",
+    "slashai/gpt-5.5-instant",
+    "slashai/gpt-5.4-nano",
+    "slashai/gpt-5-nano",
+    "slashai/gpt-5.4-mini",
+    "slashai/gpt-5-mini",
+    "slashai/gpt-5-codex-mini",
+    "slashai/claude-haiku-4.5",
+    "slashai/gemini-3-flash",
+    "slashai/deepseek-v4-flash",
+    "slashai/mimo-v2-flash",
+    "slashai/Step-3.5-Flash",
+    "gpt-5.5-instant", "gpt-5.4-mini", "gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini", "o4-mini", "o3-mini",
 ]
 QUALITY_MODEL_PRIORITY = [
-    "gpt-5.5", "gpt-5.4", "gpt-5.3", "gpt-5.2", "gpt-5.1", "gpt-5",
-    "gpt-4.1", "gpt-4o", "o3", "o4-mini", "gpt-4.1-mini",
+    "slashai/gpt-5.5",
+    "slashai/gpt-5.4-pro",
+    "slashai/gpt-5.4",
+    "slashai/gpt-5.2",
+    "slashai/gpt-5.1",
+    "slashai/claude-sonnet-4.7",
+    "slashai/claude-opus-4.7",
+    "slashai/gemini-3.1-pro",
+    "slashai/deepseek-v4-pro",
+    "slashai/Qwen3.6-Max-Preview",
+    "slashai/GLM-5.1",
+    "gpt-5.5", "gpt-5.4", "gpt-5.2", "gpt-5.1", "gpt-5", "gpt-4.1", "gpt-4o", "o3",
 ]
 
 
 def is_probable_text_model(model_id: str) -> bool:
-    """Keep model choices relevant for text insight generation."""
-    mid = str(model_id or "").lower()
+    """Keep model choices relevant for text insight generation, including SlashAI router IDs."""
+    mid = str(model_id or "").strip().lower()
     if not mid:
         return False
     excluded_fragments = [
@@ -2056,27 +2189,53 @@ def is_probable_text_model(model_id: str) -> bool:
     ]
     if any(fragment in mid for fragment in excluded_fragments):
         return False
-    return mid.startswith("gpt-") or re.match(r"^o\d", mid) is not None
+    allowed_fragments = [
+        "gpt", "codex", "claude", "deepseek", "gemini", "kimi", "qwen", "glm", "minimax", "mimo", "step",
+    ]
+    if mid.startswith("slashai/"):
+        return any(fragment in mid for fragment in allowed_fragments)
+    return mid.startswith("gpt-") or re.match(r"^o\d", mid) is not None or any(fragment in mid for fragment in allowed_fragments)
 
 
 def sort_model_ids(model_ids: list[str]) -> list[str]:
-    """Sort with common text-generation models first, while keeping the list deterministic."""
+    """Sort text model IDs with SlashAI economy/quality choices first while keeping deterministic order."""
     cleaned = sorted({str(m).strip() for m in model_ids if str(m).strip()})
+    priority_order = {m.lower(): i for i, m in enumerate(ECONOMY_MODEL_PRIORITY + QUALITY_MODEL_PRIORITY)}
 
     def rank(mid: str):
         m = mid.lower()
-        if m.startswith("gpt-5"):
+        if m in priority_order:
             group = 0
-        elif m.startswith("gpt-4.1"):
+            pos = priority_order[m]
+        elif m.startswith("slashai/gpt"):
             group = 1
-        elif m.startswith("gpt-4o"):
+            pos = 0
+        elif "claude" in m:
             group = 2
-        elif re.match(r"^o\d", m):
+            pos = 0
+        elif "gemini" in m:
             group = 3
+            pos = 0
+        elif any(x in m for x in ["deepseek", "qwen", "glm", "kimi", "minimax", "mimo", "step"]):
+            group = 4
+            pos = 0
+        elif m.startswith("gpt-5"):
+            group = 5
+            pos = 0
+        elif m.startswith("gpt-4.1"):
+            group = 6
+            pos = 0
+        elif m.startswith("gpt-4o"):
+            group = 7
+            pos = 0
+        elif re.match(r"^o\d", m):
+            group = 8
+            pos = 0
         else:
             group = 9
-        mini_bonus = 0 if "mini" in m else 1
-        return (group, mini_bonus, m)
+            pos = 0
+        size_bonus = 0 if any(x in m for x in ["instant", "nano", "mini", "flash"]) else 1
+        return (group, pos, size_bonus, m)
 
     return sorted(cleaned, key=rank)
 
@@ -2195,7 +2354,7 @@ def call_openai_responses_api(api_key: str, model: str, user_prompt: str, api_ba
     try:
         response = requests.post(
             url,
-            headers=build_bearer_headers(api_key),
+            headers=build_bearer_headers(api_key, model),
             json=body,
             timeout=120,
         )
@@ -2268,7 +2427,7 @@ def render_online_ai_insight_panel(location: str = ""):
     model, model_source = get_effective_ai_model(api_key)
 
     st.subheader("Online AI Insight Opsional")
-    st.caption("Fitur ini opsional. Tanpa API key, seluruh sistem tetap berjalan menggunakan Offline Mode berbasis rule, checklist, dan template. Online Mode memakai format OpenAI-compatible Chat Completions: POST {api-base}/v1/chat/completions dengan Authorization: Bearer <key>.")
+    st.caption("Fitur ini opsional. Tanpa API key, seluruh sistem tetap berjalan menggunakan Offline Mode berbasis rule, checklist, dan template. Online Mode memakai format OpenAI-compatible Chat Completions: POST {api-base}/v1/chat/completions dengan Authorization: Bearer <key>. Model dikirim pada body `model` dan header `model` untuk kompatibilitas SlashAI.")
 
     if mode != "Online AI Mode":
         st.info("Online AI Mode belum aktif. Aktifkan dari sidebar bila ingin memakai API key pribadi sementara.")
@@ -2371,7 +2530,7 @@ def render_sidebar():
             model_selection_options,
             index=model_selection_options.index(current_selection) if current_selection in model_selection_options else 0,
             key="ai_model_selection_radio",
-            help="Mode otomatis memilih dari daftar model yang tersedia pada API base/API key. Jika daftar belum dicek, aplikasi memakai fallback default.",
+            help="Mode otomatis memilih dari daftar model yang tersedia pada API base/API key. Jika daftar belum dicek, aplikasi memakai daftar bawaan SlashAI dan fallback default.",
         )
 
         if st.button("Hapus API key dari sesi ini", use_container_width=True):
@@ -2389,10 +2548,11 @@ def render_sidebar():
             "API Base URL",
             value=st.session_state.get("personal_api_base_url", "https://api.openai.com"),
             key="personal_api_base_url",
-            help="Isi base URL tanpa endpoint akhir. Contoh: https://api.openai.com atau https://api-base. Sistem akan memakai POST {api-base}/v1/chat/completions.",
+            help="Isi base URL tanpa endpoint akhir. Contoh: https://api-base atau base OpenAI-compatible lain. Sistem akan memakai POST {api-base}/v1/chat/completions dan header model: slashai/<nama>.",
         )
         api_key = get_personal_api_key()
         st.caption(f"Endpoint chat yang digunakan: `{chat_completions_url(get_personal_api_base_url())}`")
+        st.caption(f"Daftar model bawaan SlashAI tersedia: {len(SLASHAI_ALL_MODELS)} model. Contoh: `slashai/gpt-5.5-instant`, `slashai/gpt-5.5`, `slashai/claude-sonnet-4.7`.")
 
         if api_key:
             if st.button("🔎 Cek model tersedia dari API key", use_container_width=True):
@@ -2408,25 +2568,33 @@ def render_sidebar():
             st.caption(f"Daftar model terakhir dicek: {last_checked}. Total model text: {len(available_models)}")
         elif st.session_state.get("openai_models_error"):
             st.caption(st.session_state.openai_models_error)
+            st.caption("Sistem tetap menyediakan daftar model bawaan SlashAI untuk mode otomatis/manual.")
+        else:
+            st.caption("Belum ada daftar model dari API key. Mode otomatis/manual memakai daftar bawaan SlashAI sampai tombol cek model dijalankan.")
 
         if ai_cfg.get("model_selection") == "Pilih manual":
-            if available_models:
-                current_manual = ai_cfg.get("manual_model", ai_cfg.get("model", ECONOMY_MODEL_FALLBACK))
-                default_index = available_models.index(current_manual) if current_manual in available_models else 0
-                ai_cfg["manual_model"] = st.selectbox(
-                    "Pilih model manual dari API key",
-                    available_models,
-                    index=default_index,
-                    key="manual_model_select",
-                    help="Daftar ini berasal dari API base/API key yang sedang aktif pada sesi ini.",
-                )
-            else:
-                ai_cfg["manual_model"] = st.text_input(
-                    "Tulis model manual",
-                    value=ai_cfg.get("manual_model", ECONOMY_MODEL_FALLBACK),
-                    key="manual_model_text",
-                    help="Isi manual jika belum mengecek daftar model. Contoh: gpt-4.1-mini atau model lain yang tersedia pada akun API Anda.",
-                ).strip() or ECONOMY_MODEL_FALLBACK
+            manual_options = available_models if available_models else sort_model_ids(SLASHAI_ALL_MODELS)
+            source_label = "daftar model dari API key" if available_models else "daftar bawaan SlashAI"
+            current_manual = ai_cfg.get("manual_model", ai_cfg.get("model", ECONOMY_MODEL_FALLBACK))
+            if current_manual and current_manual not in manual_options:
+                manual_options = [current_manual] + manual_options
+            default_index = manual_options.index(current_manual) if current_manual in manual_options else 0
+            selected_manual = st.selectbox(
+                "Pilih model manual",
+                manual_options,
+                index=default_index,
+                key="manual_model_select",
+                help=f"Pilihan berasal dari {source_label}. Model dikirim sebagai body `model` dan header `model`.",
+            )
+            custom_manual = st.text_input(
+                "Atau tulis model manual",
+                value="",
+                key="manual_model_text",
+                placeholder="contoh: slashai/gpt-5.5 atau slashai/claude-sonnet-4.7",
+                help="Isi hanya jika ingin memakai model yang tidak ada di daftar. Jika kosong, sistem memakai pilihan dropdown.",
+            ).strip()
+            ai_cfg["manual_model"] = custom_manual or selected_manual or ECONOMY_MODEL_FALLBACK
+            st.caption(f"Model manual aktif: `{ai_cfg['manual_model']}` ({source_label}).")
         else:
             effective_model, source = get_effective_ai_model(api_key)
             ai_cfg["model"] = effective_model
