@@ -132,3 +132,7 @@ Pengguna tetap dapat mengganti API Base URL jika memakai gateway kompatibel lain
 ## Step
 
 - `slashai/Step-3.5-Flash`
+
+## Catatan akses/deposit
+
+Jika API menolak request dengan pesan `Deposit required to unlock pre`, itu bukan berarti API key pasti salah. Biasanya akun/provider belum membuka akses untuk model tertentu. Coba lakukan deposit/top up pada provider atau pilih model lain yang lebih ringan, misalnya `slashai/gemini-3-flash` atau `slashai/deepseek-v4-flash`.

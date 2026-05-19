@@ -297,3 +297,25 @@ API Base URL: https://api.slashai.my.id
 Model hemat: slashai/gpt-5.5-instant
 Model kualitas tinggi: slashai/gpt-5.5
 ```
+
+## Perbaikan: Deteksi error deposit/akses premium SlashAI
+
+Jika provider mengembalikan pesan seperti:
+
+```text
+access_denied: Deposit required to unlock pre
+```
+
+maka aplikasi tidak lagi menyimpulkan bahwa API key dicabut. Pesan tersebut berarti server menolak request karena akun/API key belum memiliki akses saldo/deposit untuk model yang dipilih, atau model tersebut berada pada kelas premium/pre yang perlu dibuka terlebih dahulu.
+
+Tindakan yang disarankan:
+
+1. cek saldo/deposit/top up pada provider SlashAI;
+2. tunggu beberapa detik jika server menyebut waktu reset;
+3. gunakan mode **Pilih manual** dan coba model ringan/flash seperti:
+   - `slashai/gemini-3-flash`
+   - `slashai/deepseek-v4-flash`
+   - `slashai/mimo-v2-flash`
+4. jika tetap ditolak, gunakan Offline Mode. Semua fitur systematic review tetap berjalan tanpa API.
+
+Pengaturan default hemat biaya pada versi ini diarahkan ke model ringan/flash terlebih dahulu agar mengurangi risiko terkena pembatasan premium.

@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 APP_TITLE = "Agro & Biosystems Systematic Review Builder"
-APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + SlashAI Chat Completions Endpoint + Biosystems Edition"
+APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + SlashAI Chat Completions + Deposit-Aware Error Handling"
 SLASHAI_DEFAULT_API_BASE = "https://api.slashai.my.id"
 SLASHAI_DEFAULT_CHAT_COMPLETIONS_ENDPOINT = "https://api.slashai.my.id/v1/chat/completions"
 
@@ -2117,6 +2117,63 @@ def compact_api_error(response) -> str:
     return text[:500] if text else f"HTTP {getattr(response, 'status_code', '')}"
 
 
+def classify_api_error(status_code: int, detail: str, endpoint: str = "", model: str = "") -> str:
+    """Return a more precise, user-facing API error diagnosis.
+
+    Many OpenAI-compatible gateways return 403 for reasons other than a revoked key.
+    SlashAI may return `access_denied` with `Deposit required to unlock pre`. In that
+    case the correct action is topping up/unlocking the provider access or choosing
+    a model that the account can access, not retyping the key repeatedly.
+    """
+    d = str(detail or "")
+    dl = d.lower()
+    prefix = f"Endpoint: {endpoint}. Model: {model}. Detail server: {d}"
+
+    if "deposit required" in dl or "unlock pre" in dl or "saldo" in dl or "top up" in dl or "topup" in dl:
+        return (
+            "Server menolak request karena akun/API key belum memiliki akses saldo/deposit untuk model yang dipilih. "
+            "API key masih bisa benar, tetapi provider meminta deposit/akses premium terlebih dahulu. "
+            "Solusi: lakukan deposit/top up di provider SlashAI, tunggu beberapa detik sesuai pesan server bila ada reset, "
+            "atau coba mode `Pilih manual` dengan model yang lebih ringan/flash. "
+            f"{prefix}"
+        )
+    if "access_denied" in dl or "access denied" in dl or "restricted" in dl or "not allowed" in dl:
+        return (
+            "Server menolak akses untuk model/API base yang dipilih. Ini belum tentu API key dicabut; "
+            "bisa karena model belum terbuka untuk akun tersebut, region/provider membatasi akses, atau akun belum memenuhi syarat. "
+            f"{prefix}"
+        )
+    if "invalid" in dl and ("key" in dl or "token" in dl or "api" in dl):
+        return (
+            "API key/token tampak tidak valid menurut server. Pastikan yang ditempel hanya token atau `Bearer <token>`, "
+            "tanpa spasi/teks tambahan. "
+            f"{prefix}"
+        )
+    if status_code == 401:
+        return (
+            "Server meminta autentikasi ulang (401). Biasanya karena API key kosong, salah format, atau tidak diterima provider. "
+            f"{prefix}"
+        )
+    if status_code == 403:
+        return (
+            "Server menolak otorisasi (403). Ini bisa terjadi karena akses model tidak tersedia untuk API key, "
+            "akun belum deposit/top up, atau API base tidak cocok. "
+            f"{prefix}"
+        )
+    if status_code == 429:
+        return (
+            "Limit/rate limit API tercapai atau saldo/quota akun API tidak mencukupi. "
+            "Coba ulang setelah beberapa saat, ganti model yang lebih ringan, atau cek saldo/provider. "
+            f"{prefix}"
+        )
+    if status_code == 404:
+        return (
+            "Endpoint atau model tidak ditemukan. Pastikan API Base benar dan model memakai ID yang didukung provider. "
+            f"{prefix}"
+        )
+    return f"Gagal memanggil API ({status_code}). {prefix}"
+
+
 def build_ai_project_context(max_records: int = 25) -> str:
     """Create a compact JSON context for optional online AI insight.
 
@@ -2254,20 +2311,21 @@ SLASHAI_MODEL_CATALOG = {
 
 SLASHAI_ALL_MODELS = [m for group in SLASHAI_MODEL_CATALOG.values() for m in group]
 
-ECONOMY_MODEL_FALLBACK = "slashai/gpt-5.5-instant"
+ECONOMY_MODEL_FALLBACK = "slashai/gemini-3-flash"
 QUALITY_MODEL_FALLBACK = "slashai/gpt-5.5"
 ECONOMY_MODEL_PRIORITY = [
-    "slashai/gpt-5.5-instant",
+    # Prioritise lighter/flash models first because some premium/pre models may require deposit.
+    "slashai/gemini-3-flash",
+    "slashai/deepseek-v4-flash",
+    "slashai/mimo-v2-flash",
+    "slashai/Step-3.5-Flash",
     "slashai/gpt-5.4-nano",
     "slashai/gpt-5-nano",
     "slashai/gpt-5.4-mini",
     "slashai/gpt-5-mini",
     "slashai/gpt-5-codex-mini",
     "slashai/claude-haiku-4.5",
-    "slashai/gemini-3-flash",
-    "slashai/deepseek-v4-flash",
-    "slashai/mimo-v2-flash",
-    "slashai/Step-3.5-Flash",
+    "slashai/gpt-5.5-instant",
     "gpt-5.5-instant", "gpt-5.4-mini", "gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini", "o4-mini", "o3-mini",
 ]
 QUALITY_MODEL_PRIORITY = [
@@ -2361,14 +2419,13 @@ def list_openai_models_with_key(api_key: str, api_base: str | None = None) -> tu
         )
         if response.status_code >= 400:
             detail = compact_api_error(response)
-            if response.status_code in (401, 403):
-                msg = "API key tidak valid atau tidak memiliki izin untuk membaca daftar model."
-            elif response.status_code == 429:
-                msg = "Limit/rate limit API tercapai atau quota akun tidak mencukupi saat mengecek model."
-            else:
-                msg = f"Gagal membaca daftar model dari {base}/v1/models: {detail}"
+            msg = classify_api_error(response.status_code, detail, models_url(base), "model-list")
+            # Reading /v1/models is optional. Keep the app usable with built-in SlashAI models.
             st.session_state.openai_models_error = msg
-            return False, msg
+            st.session_state.openai_available_models = sort_model_ids(SLASHAI_ALL_MODELS)
+            st.session_state.openai_models_last_checked = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            st.session_state.openai_models_api_base = base
+            return True, st.session_state.openai_available_models
 
         payload = response_payload_lenient(response)
         models = extract_model_ids_from_payload_or_text(payload, getattr(response, "text", ""))
@@ -2472,18 +2529,7 @@ def call_openai_responses_api(api_key: str, model: str, user_prompt: str, api_ba
         )
         if response.status_code >= 400:
             detail = compact_api_error(response)
-            if response.status_code in (401, 403):
-                return False, (
-                    f"Server menolak otorisasi ({response.status_code}). Ini belum tentu berarti API key dicabut; "
-                    f"penyebabnya bisa format key salah, key ditempel bersama kata Bearer/Authorization, "
-                    f"model tidak tersedia untuk key tersebut, atau API base tidak cocok. "
-                    f"Endpoint: {url}. Model: {model}. Detail server: {detail}"
-                )
-            if response.status_code == 404:
-                return False, f"Endpoint atau model tidak ditemukan. Pastikan API Base benar dan mendukung {url}. Detail: {detail}"
-            if response.status_code == 429:
-                return False, "Limit/rate limit API tercapai atau saldo/quota akun API tidak mencukupi."
-            return False, f"Gagal membuat AI insight dari Chat Completions API ({response.status_code}): {detail}"
+            return False, classify_api_error(response.status_code, detail, url, model)
 
         payload = response_payload_lenient(response)
         if isinstance(payload, dict):
@@ -2695,7 +2741,7 @@ def render_sidebar():
         )
         api_key = get_personal_api_key()
         st.caption(f"Endpoint chat yang digunakan: `{chat_completions_url(get_personal_api_base_url())}`")
-        st.caption(f"Daftar model bawaan SlashAI tersedia: {len(SLASHAI_ALL_MODELS)} model. Contoh: `slashai/gpt-5.5-instant`, `slashai/gpt-5.5`, `slashai/claude-sonnet-4.7`.")
+        st.caption(f"Daftar model bawaan SlashAI tersedia: {len(SLASHAI_ALL_MODELS)} model. Contoh ringan: `slashai/gemini-3-flash`, `slashai/deepseek-v4-flash`; contoh kualitas tinggi: `slashai/gpt-5.5`, `slashai/claude-sonnet-4.7`.")
 
         if api_key:
             if st.button("🔎 Cek model tersedia dari API key", use_container_width=True):
@@ -2738,7 +2784,7 @@ def render_sidebar():
                 "Atau tulis model manual",
                 value="",
                 key="manual_model_text",
-                placeholder="contoh: slashai/gpt-5.5 atau slashai/claude-sonnet-4.7",
+                placeholder="contoh: slashai/gemini-3-flash, slashai/deepseek-v4-flash, atau slashai/gpt-5.5",
                 help="Isi hanya jika ingin memakai model yang tidak ada di daftar. Jika kosong, sistem memakai pilihan dropdown.",
             ).strip()
             ai_cfg["manual_model"] = custom_manual or selected_manual or ECONOMY_MODEL_FALLBACK
@@ -2748,6 +2794,8 @@ def render_sidebar():
             ai_cfg["model"] = effective_model
             ai_cfg["selected_model_source"] = source
             st.caption(f"Model terpilih otomatis: `{effective_model}` ({source}).")
+            if "gpt-5.5" in str(effective_model).lower():
+                st.caption("Jika muncul pesan `Deposit required`, coba `Pilih manual` lalu gunakan `slashai/gemini-3-flash` atau `slashai/deepseek-v4-flash`.")
 
         if ai_cfg.get("mode") == "Online AI Mode" and api_key:
             current_model_for_test, _ = get_effective_ai_model(api_key)
@@ -2758,7 +2806,7 @@ def render_sidebar():
                     st.success(msg)
                 else:
                     st.error(msg)
-                    st.info("Coba pastikan API Base tetap `https://api.slashai.my.id`, model memakai awalan `slashai/`, dan field API key tidak berisi spasi/teks tambahan.")
+                    st.info("Coba pastikan API Base tetap `https://api.slashai.my.id`, model memakai awalan `slashai/`, dan field API key tidak berisi spasi/teks tambahan. Jika detail server menyebut `Deposit required`, lakukan deposit/top up di provider atau pilih model lain yang lebih ringan lewat mode manual.")
 
         if ai_cfg.get("mode") == "Online AI Mode" and api_key:
             st.success("Online AI aktif untuk sesi ini.")
