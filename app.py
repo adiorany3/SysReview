@@ -1,7 +1,6 @@
 import json
 import re
 import zipfile
-from copy import copy
 from datetime import date
 from io import BytesIO
 
@@ -16,7 +15,7 @@ st.set_page_config(
 )
 
 APP_TITLE = "Agro Systematic Review Builder"
-APP_VERSION = "Final Integrated Insight Edition - XLSX Workflow"
+APP_VERSION = "Enhanced Examples & Guidance Edition"
 
 ARTICLE_COLUMNS = [
     "id", "title", "authors", "year", "journal", "doi", "country", "study_design",
@@ -76,6 +75,324 @@ DOMAIN_PROFILES = {
 }
 
 GENERIC_TERMS = ["review", "study", "analysis", "effect", "impact", "influence", "pengaruh", "analisis", "kajian", "systematic"]
+
+
+FRAMEWORK_GUIDES = {
+    "PICO": {
+        "name": "PICO",
+        "focus": "Intervensi/perlakuan tanpa penekanan eksplisit pada desain studi.",
+        "best_for": "Cocok untuk pertanyaan efektivitas: pakan, probiotik, pupuk, biochar, vaksin, teknologi budidaya, atau metode pengolahan.",
+        "components": {
+            "P": "Population/Problem: objek, komoditas, spesies, sistem produksi, atau masalah utama.",
+            "I": "Intervention: perlakuan, teknologi, produk, strategi, atau tindakan yang diuji.",
+            "C": "Comparator: kontrol, praktik konvensional, tanpa perlakuan, atau perlakuan pembanding.",
+            "O": "Outcome: hasil terukur seperti FCR, bobot badan, yield, kualitas, survival, emisi, atau soil carbon.",
+        },
+        "warning": "Gunakan PICO jika desain studi belum ingin dibatasi terlalu ketat. Untuk target Q1/Q2, biasanya PICOS lebih kuat karena desain studi dijelaskan sejak awal.",
+    },
+    "PICOS": {
+        "name": "PICOS",
+        "focus": "Intervensi/perlakuan dengan batasan jenis studi yang akan dimasukkan.",
+        "best_for": "Paling cocok untuk systematic review yang ingin kuat secara metodologi dan berpotensi meta-analysis.",
+        "components": {
+            "P": "Population/Problem: objek, komoditas, spesies, sistem produksi, atau masalah utama.",
+            "I": "Intervention: perlakuan, teknologi, produk, strategi, atau tindakan yang diuji.",
+            "C": "Comparator: kontrol, praktik konvensional, tanpa perlakuan, atau perlakuan pembanding.",
+            "O": "Outcome: hasil terukur seperti FCR, bobot badan, yield, kualitas, survival, emisi, atau soil carbon.",
+            "S": "Study design: feeding trial, field trial, greenhouse experiment, randomized trial, observational study, atau laboratory experiment.",
+        },
+        "warning": "PICOS adalah pilihan paling aman untuk naskah systematic review yang ditargetkan ke jurnal bereputasi karena screening dan sintesis menjadi lebih terarah.",
+    },
+    "PECO": {
+        "name": "PECO",
+        "focus": "Paparan/exposure, faktor risiko, tekanan lingkungan, kondisi alami, atau faktor yang tidak selalu diberikan sebagai perlakuan langsung.",
+        "best_for": "Cocok untuk topik kekeringan, heat stress, salinitas, pencemaran, iklim, penyakit, land-use change, atau paparan lingkungan lain.",
+        "components": {
+            "P": "Population/Problem: objek, komoditas, spesies, ekosistem, atau sistem produksi.",
+            "E": "Exposure: paparan/faktor risiko/kondisi seperti drought, heat stress, salinity, pollutant, disease pressure, atau climate variability.",
+            "C": "Comparator: kondisi normal, tidak terpapar, tingkat paparan rendah, atau lokasi/kondisi kontrol.",
+            "O": "Outcome: dampak terukur seperti produksi, yield, survival, milk yield, soil health, kualitas air, atau biodiversitas.",
+        },
+        "warning": "PECO lebih tepat daripada PICO apabila variabel utama adalah paparan atau kondisi, bukan intervensi yang sengaja diberikan peneliti.",
+    },
+}
+
+DOMAIN_FRAMEWORK_EXAMPLES = {
+    ("Peternakan", "PICOS"): {
+        "title": "Effects of Probiotic Supplementation on Growth Performance and Feed Conversion Ratio in Broiler Chickens: A Systematic Review and Meta-Analysis",
+        "population": "broiler chickens",
+        "intervention": "probiotic supplementation",
+        "comparator": "control diet or non-supplemented diet",
+        "outcome": "growth performance; feed conversion ratio; body weight gain; mortality",
+        "study_design": "experimental studies or feeding trials",
+        "research_question": "How does probiotic supplementation affect growth performance, feed conversion ratio, and mortality in broiler chickens compared with non-supplemented diets?",
+        "keywords": {
+            "population_terms": "broiler chicken\npoultry\nGallus gallus",
+            "intervention_terms": "probiotic\nprebiotic\nsynbiotic\nfeed additive",
+            "comparator_terms": "control diet\nbasal diet\nnon-supplemented diet",
+            "outcome_terms": "growth performance\nfeed conversion ratio\nFCR\nbody weight gain\nmortality",
+            "study_terms": "feeding trial\nexperimental study\ncontrolled trial",
+        },
+        "insight": "Topik ini kuat untuk meta-analysis karena outcome seperti FCR dan body weight gain biasanya kuantitatif. Tantangannya adalah heterogenitas strain probiotik, dosis, durasi pemberian, umur broiler, dan kondisi pemeliharaan.",
+    },
+    ("Peternakan", "PICO"): {
+        "title": "Herbal Feed Additives for Improving Growth Performance in Poultry: A Systematic Review",
+        "population": "poultry or broiler chickens",
+        "intervention": "herbal feed additives",
+        "comparator": "basal diet or commercial feed without herbal additives",
+        "outcome": "growth performance; feed efficiency; immune response",
+        "study_design": "experimental studies",
+        "research_question": "Do herbal feed additives improve growth performance and feed efficiency in poultry compared with basal diets?",
+        "keywords": {
+            "population_terms": "poultry\nbroiler chicken\nlayer chicken",
+            "intervention_terms": "herbal feed additive\nphytogenic additive\nplant extract\nessential oil",
+            "comparator_terms": "basal diet\ncontrol diet\nwithout additive",
+            "outcome_terms": "growth performance\nfeed efficiency\nbody weight gain\nimmune response",
+            "study_terms": "experimental study\nfeeding trial",
+        },
+        "insight": "PICO cukup untuk mengeksplorasi efektivitas umum, tetapi untuk naskah jurnal Q sebaiknya study design tetap dijelaskan pada kriteria inklusi agar kualitas bukti lebih terkontrol.",
+    },
+    ("Peternakan", "PECO"): {
+        "title": "Effects of Heat Stress Exposure on Milk Yield and Physiological Responses in Dairy Cattle: A Systematic Review",
+        "population": "dairy cattle",
+        "intervention": "heat stress exposure",
+        "comparator": "thermoneutral or non-heat stress conditions",
+        "outcome": "milk yield; physiological response; feed intake; reproductive performance",
+        "study_design": "observational studies and experimental exposure studies",
+        "research_question": "How does heat stress exposure affect milk yield and physiological responses in dairy cattle compared with thermoneutral conditions?",
+        "keywords": {
+            "population_terms": "dairy cattle\ndairy cow\nlactating cow",
+            "intervention_terms": "heat stress\nthermal stress\nhigh temperature\ntemperature humidity index",
+            "comparator_terms": "thermoneutral\nnormal temperature\nnon-heat stress",
+            "outcome_terms": "milk yield\nfeed intake\nphysiological response\nreproductive performance",
+            "study_terms": "observational study\nexperimental study\nfield study",
+        },
+        "insight": "Gunakan PECO karena heat stress adalah paparan. Fokus analisis sebaiknya mencatat indeks THI, durasi paparan, fase laktasi, dan sistem pemeliharaan.",
+    },
+    ("Agro/Agronomi", "PICOS"): {
+        "title": "Effects of Biochar Application on Maize Yield and Soil Organic Carbon in Tropical Agriculture: A Systematic Review and Meta-Analysis",
+        "population": "maize crops or tropical agricultural soils",
+        "intervention": "biochar application",
+        "comparator": "no biochar or conventional fertilization",
+        "outcome": "maize yield; soil organic carbon; nutrient availability; water use efficiency",
+        "study_design": "field trials and greenhouse experiments",
+        "research_question": "How does biochar application affect maize yield and soil organic carbon in tropical agricultural systems compared with no biochar or conventional fertilization?",
+        "keywords": {
+            "population_terms": "maize\ncorn\nZea mays\ntropical soil",
+            "intervention_terms": "biochar\nsoil amendment\ncharcoal amendment",
+            "comparator_terms": "no biochar\ncontrol\nconventional fertilization",
+            "outcome_terms": "maize yield\nsoil organic carbon\nnutrient availability\nwater use efficiency",
+            "study_terms": "field trial\ngreenhouse experiment\ncontrolled experiment",
+        },
+        "insight": "Topik biochar kuat untuk systematic review karena relevan dengan soil health dan climate-smart agriculture. Untuk meta-analysis, pastikan satuan yield, dosis biochar, jenis bahan baku biochar, dan kondisi tanah dicatat lengkap.",
+    },
+    ("Agro/Agronomi", "PICO"): {
+        "title": "Organic Fertilizer Application for Improving Rice Productivity: A Systematic Review",
+        "population": "rice crops or paddy fields",
+        "intervention": "organic fertilizer application",
+        "comparator": "inorganic fertilizer or no fertilizer control",
+        "outcome": "rice yield; soil fertility; nutrient uptake",
+        "study_design": "field trials and greenhouse experiments",
+        "research_question": "Does organic fertilizer application improve rice yield and soil fertility compared with inorganic fertilizer or no fertilizer control?",
+        "keywords": {
+            "population_terms": "rice\npaddy\nOryza sativa",
+            "intervention_terms": "organic fertilizer\ncompost\nmanure\norganic amendment",
+            "comparator_terms": "inorganic fertilizer\nchemical fertilizer\ncontrol\nno fertilizer",
+            "outcome_terms": "rice yield\nsoil fertility\nnutrient uptake\nproductivity",
+            "study_terms": "field trial\ngreenhouse experiment",
+        },
+        "insight": "Topik ini cocok untuk PICO karena ada intervensi pemupukan. Namun untuk jurnal Q, pisahkan kompos, manure, dan biofertilizer karena mekanisme dan efeknya bisa berbeda.",
+    },
+    ("Agro/Agronomi", "PECO"): {
+        "title": "Effects of Drought Stress on Rice Growth and Yield: A Systematic Review",
+        "population": "rice crops",
+        "intervention": "drought stress exposure",
+        "comparator": "normal irrigation or non-drought conditions",
+        "outcome": "rice yield; growth; physiological response; water use efficiency",
+        "study_design": "field trials, greenhouse experiments, and observational studies",
+        "research_question": "How does drought stress exposure affect rice growth and yield compared with normal irrigation conditions?",
+        "keywords": {
+            "population_terms": "rice\nOryza sativa\npaddy",
+            "intervention_terms": "drought stress\nwater deficit\nlimited irrigation",
+            "comparator_terms": "normal irrigation\nwell-watered\nnon-drought",
+            "outcome_terms": "rice yield\ngrowth\nphysiological response\nwater use efficiency",
+            "study_terms": "field trial\ngreenhouse experiment\nobservational study",
+        },
+        "insight": "PECO tepat karena drought adalah paparan. Catat fase pertumbuhan tanaman, intensitas kekeringan, durasi paparan, dan varietas karena faktor tersebut sangat memengaruhi heterogenitas.",
+    },
+    ("Perikanan/Akuakultur", "PICOS"): {
+        "title": "Effects of Probiotic Supplementation on Growth Performance and Survival of Nile Tilapia: A Systematic Review and Meta-Analysis",
+        "population": "Nile tilapia or cultured fish",
+        "intervention": "probiotic supplementation",
+        "comparator": "control feed or non-supplemented diet",
+        "outcome": "growth performance; survival rate; feed conversion ratio; immune response",
+        "study_design": "aquaculture feeding trials and controlled experiments",
+        "research_question": "How does probiotic supplementation affect growth performance, survival, and feed conversion ratio in Nile tilapia compared with non-supplemented diets?",
+        "keywords": {
+            "population_terms": "Nile tilapia\nOreochromis niloticus\nfarmed fish\naquaculture",
+            "intervention_terms": "probiotic\nprebiotic\nsynbiotic\nfeed additive",
+            "comparator_terms": "control feed\nbasal diet\nnon-supplemented diet",
+            "outcome_terms": "growth performance\nsurvival rate\nfeed conversion ratio\nimmune response",
+            "study_terms": "feeding trial\ncontrolled experiment\naquaculture trial",
+        },
+        "insight": "Outcome akuakultur sering kuantitatif, tetapi kualitas air, padat tebar, ukuran awal ikan, dan lama pemeliharaan harus dicatat sebagai sumber heterogenitas.",
+    },
+    ("Perikanan/Akuakultur", "PICO"): {
+        "title": "Biofloc Technology for Improving Water Quality and Growth in Aquaculture: A Systematic Review",
+        "population": "cultured fish or shrimp",
+        "intervention": "biofloc technology",
+        "comparator": "conventional aquaculture system",
+        "outcome": "water quality; growth performance; survival rate; feed efficiency",
+        "study_design": "controlled aquaculture experiments",
+        "research_question": "Does biofloc technology improve water quality, growth performance, and survival in aquaculture compared with conventional systems?",
+        "keywords": {
+            "population_terms": "aquaculture\nfish\nshrimp\ntilapia\ncatfish",
+            "intervention_terms": "biofloc\nbiofloc technology\nBFT",
+            "comparator_terms": "conventional aquaculture\nclear water system\ncontrol system",
+            "outcome_terms": "water quality\ngrowth performance\nsurvival rate\nfeed efficiency",
+            "study_terms": "controlled experiment\naquaculture trial",
+        },
+        "insight": "PICO dapat digunakan karena biofloc adalah intervensi teknologi. Perhatikan variasi C/N ratio, sumber karbon, padat tebar, dan parameter kualitas air.",
+    },
+    ("Perikanan/Akuakultur", "PECO"): {
+        "title": "Effects of Ammonia Exposure on Growth, Survival, and Physiological Stress in Farmed Fish: A Systematic Review",
+        "population": "farmed fish",
+        "intervention": "ammonia exposure",
+        "comparator": "low ammonia or normal water quality conditions",
+        "outcome": "growth; survival; physiological stress; immune response",
+        "study_design": "exposure studies and aquaculture experiments",
+        "research_question": "How does ammonia exposure affect growth, survival, and physiological stress in farmed fish compared with normal water quality conditions?",
+        "keywords": {
+            "population_terms": "farmed fish\naquaculture fish\ntilapia\ncatfish",
+            "intervention_terms": "ammonia exposure\nammonia toxicity\ntotal ammonia nitrogen\nTAN",
+            "comparator_terms": "normal water quality\nlow ammonia\ncontrol",
+            "outcome_terms": "growth\nsurvival\nphysiological stress\nimmune response",
+            "study_terms": "exposure study\ncontrolled experiment\naquaculture trial",
+        },
+        "insight": "PECO tepat karena ammonia adalah paparan lingkungan. Ekstraksi data perlu mencatat konsentrasi ammonia, pH, suhu, spesies, dan durasi paparan.",
+    },
+    ("Pangan", "PICOS"): {
+        "title": "Effects of Fermentation on Nutritional Quality and Antioxidant Activity of Plant-Based Foods: A Systematic Review",
+        "population": "plant-based foods",
+        "intervention": "fermentation process",
+        "comparator": "unfermented foods or conventional processing",
+        "outcome": "nutritional quality; antioxidant activity; sensory quality; microbial safety",
+        "study_design": "laboratory experiments and controlled food processing studies",
+        "research_question": "How does fermentation affect nutritional quality, antioxidant activity, and sensory quality of plant-based foods compared with unfermented or conventionally processed foods?",
+        "keywords": {
+            "population_terms": "plant-based food\nfermented food\nvegetable\ngrain\nlegume",
+            "intervention_terms": "fermentation\nlactic acid fermentation\nmicrobial fermentation",
+            "comparator_terms": "unfermented\nconventional processing\ncontrol",
+            "outcome_terms": "nutritional quality\nantioxidant activity\nsensory quality\nmicrobial safety",
+            "study_terms": "laboratory experiment\ncontrolled study\nfood processing study",
+        },
+        "insight": "Topik pangan sering memiliki outcome beragam. Untuk sintesis kuat, kelompokkan outcome menjadi gizi, keamanan mikrobiologi, sensoris, dan aktivitas bioaktif.",
+    },
+    ("Pangan", "PICO"): {
+        "title": "Edible Coating for Extending Shelf Life of Fresh Fruits: A Systematic Review",
+        "population": "fresh fruits",
+        "intervention": "edible coating",
+        "comparator": "uncoated control or conventional packaging",
+        "outcome": "shelf life; weight loss; firmness; microbial quality",
+        "study_design": "controlled postharvest experiments",
+        "research_question": "Does edible coating extend shelf life and maintain quality of fresh fruits compared with uncoated or conventionally packaged controls?",
+        "keywords": {
+            "population_terms": "fresh fruit\npostharvest fruit\nfruit quality",
+            "intervention_terms": "edible coating\nbiopolymer coating\nchitosan coating\nalginate coating",
+            "comparator_terms": "uncoated control\nconventional packaging\ncontrol",
+            "outcome_terms": "shelf life\nweight loss\nfirmness\nmicrobial quality",
+            "study_terms": "postharvest experiment\ncontrolled experiment",
+        },
+        "insight": "PICO tepat karena edible coating adalah intervensi. Variabel penting: jenis coating, konsentrasi, suhu penyimpanan, jenis buah, dan lama penyimpanan.",
+    },
+    ("Pangan", "PECO"): {
+        "title": "Effects of Storage Temperature Exposure on Microbial Safety and Quality of Fresh Meat: A Systematic Review",
+        "population": "fresh meat products",
+        "intervention": "storage temperature exposure",
+        "comparator": "recommended cold storage temperature",
+        "outcome": "microbial safety; shelf life; physicochemical quality; sensory quality",
+        "study_design": "storage experiments and observational studies",
+        "research_question": "How does storage temperature exposure affect microbial safety and quality of fresh meat products compared with recommended cold storage conditions?",
+        "keywords": {
+            "population_terms": "fresh meat\nmeat product\nbeef\nchicken meat",
+            "intervention_terms": "storage temperature\ntemperature abuse\ncold storage\nrefrigeration",
+            "comparator_terms": "recommended temperature\noptimal storage\ncontrol temperature",
+            "outcome_terms": "microbial safety\nshelf life\nphysicochemical quality\nsensory quality",
+            "study_terms": "storage experiment\nobservational study\ncontrolled study",
+        },
+        "insight": "PECO tepat jika suhu dianggap paparan. Catat suhu aktual, durasi, jenis kemasan, jenis daging, dan metode uji mikrobiologi.",
+    },
+    ("Lingkungan", "PICOS"): {
+        "title": "Agroforestry Interventions for Improving Soil Health and Biodiversity in Agricultural Landscapes: A Systematic Review",
+        "population": "agricultural landscapes or agroecosystems",
+        "intervention": "agroforestry intervention",
+        "comparator": "monoculture or conventional agricultural systems",
+        "outcome": "soil health; biodiversity; carbon storage; ecosystem services",
+        "study_design": "field studies and comparative ecological studies",
+        "research_question": "How do agroforestry interventions affect soil health, biodiversity, and carbon storage compared with monoculture or conventional agricultural systems?",
+        "keywords": {
+            "population_terms": "agricultural landscape\nagroecosystem\nfarmland",
+            "intervention_terms": "agroforestry\ntree-based farming\nsilvopasture\nalley cropping",
+            "comparator_terms": "monoculture\nconventional agriculture\nnon-agroforestry",
+            "outcome_terms": "soil health\nbiodiversity\ncarbon storage\necosystem services",
+            "study_terms": "field study\ncomparative study\necological study",
+        },
+        "insight": "Topik ini cocok dengan ROSES/CEE karena berhubungan dengan environmental evidence. Heterogenitas lokasi dan indikator ekologis harus dijelaskan dengan hati-hati.",
+    },
+    ("Lingkungan", "PICO"): {
+        "title": "Restoration Practices for Improving Soil Health in Degraded Agricultural Land: A Systematic Review",
+        "population": "degraded agricultural land",
+        "intervention": "restoration practices",
+        "comparator": "unrestored or conventional land management",
+        "outcome": "soil health; soil organic carbon; vegetation recovery; erosion reduction",
+        "study_design": "field studies and restoration experiments",
+        "research_question": "Do restoration practices improve soil health and vegetation recovery in degraded agricultural land compared with unrestored or conventional land management?",
+        "keywords": {
+            "population_terms": "degraded agricultural land\ndegraded soil\nfarmland",
+            "intervention_terms": "restoration\nrehabilitation\nsoil conservation\nrevegetation",
+            "comparator_terms": "unrestored land\nconventional management\ncontrol site",
+            "outcome_terms": "soil health\nsoil organic carbon\nvegetation recovery\nerosion reduction",
+            "study_terms": "field study\nrestoration experiment\ncomparative study",
+        },
+        "insight": "PICO masih bisa digunakan bila restoration dianggap intervensi. Untuk environmental evidence, gunakan ROSES dan jelaskan konteks ekosistem secara rinci.",
+    },
+    ("Lingkungan", "PECO"): {
+        "title": "Effects of Land-Use Change Exposure on Soil Carbon and Biodiversity in Agroecosystems: A Systematic Review",
+        "population": "agroecosystems or agricultural landscapes",
+        "intervention": "land-use change exposure",
+        "comparator": "unchanged land use or reference ecosystem",
+        "outcome": "soil carbon; biodiversity; ecosystem services; soil quality",
+        "study_design": "observational studies and comparative ecological studies",
+        "research_question": "How does land-use change exposure affect soil carbon and biodiversity in agroecosystems compared with unchanged land use or reference ecosystems?",
+        "keywords": {
+            "population_terms": "agroecosystem\nagricultural landscape\nfarmland",
+            "intervention_terms": "land-use change\nland conversion\nagricultural expansion",
+            "comparator_terms": "reference ecosystem\nunchanged land use\ncontrol site",
+            "outcome_terms": "soil carbon\nbiodiversity\necosystem services\nsoil quality",
+            "study_terms": "observational study\ncomparative study\necological study",
+        },
+        "insight": "PECO tepat karena land-use change adalah paparan/kondisi. Catat tipe perubahan lahan, waktu sejak perubahan, zona iklim, dan indikator biodiversitas.",
+    },
+}
+
+TARGET_GUIDES = {
+    "Q1/Q2": {
+        "focus": "Topik harus spesifik, global, metodologi transparan, quality assessment kuat, dan sintesis tidak sekadar rangkuman artikel.",
+        "minimum": "Gunakan minimal database besar seperti Scopus/Web of Science ditambah database bidang; tampilkan search string lengkap; gunakan PRISMA/ROSES; siapkan justification untuk heterogenitas.",
+    },
+    "Q2/Q3": {
+        "focus": "Topik tetap harus punya novelty, tetapi scope dapat lebih terbatas selama metode systematic review jelas.",
+        "minimum": "Pastikan screening, PRISMA, inclusion-exclusion, dan quality assessment terdokumentasi baik.",
+    },
+    "Scopus awal": {
+        "focus": "Utamakan keterbacaan metode, kejelasan research question, dan konsistensi data extraction.",
+        "minimum": "Gunakan database internasional dan hindari hanya memakai Google Scholar tanpa strategi pencarian yang dapat diulang.",
+    },
+    "Sinta/Kampus": {
+        "focus": "Boleh lebih kontekstual/lokal, tetapi tetap harus sistematis dan tidak berubah menjadi narrative review biasa.",
+        "minimum": "Minimal ada kerangka PICO/PICOS/PECO, flow seleksi artikel, dan alasan inklusi-eksklusi yang jelas.",
+    },
+}
 
 
 def init_state():
@@ -305,6 +622,172 @@ def analyze_title(project: dict):
     }
 
 
+
+
+def get_selected_example(project: dict):
+    domain = infer_domain(project)
+    framework = project.get("framework", "PICOS")
+    if domain == "Otomatis":
+        domain = "Peternakan"
+    return DOMAIN_FRAMEWORK_EXAMPLES.get((domain, framework)) or DOMAIN_FRAMEWORK_EXAMPLES.get((domain, "PICOS")) or DOMAIN_FRAMEWORK_EXAMPLES[("Peternakan", "PICOS")]
+
+
+def apply_example_to_project(example: dict, domain: str, framework: str):
+    st.session_state.project.update({
+        "title": example.get("title", ""),
+        "domain": domain,
+        "framework": framework,
+        "research_question": example.get("research_question", ""),
+        "population": example.get("population", ""),
+        "intervention": example.get("intervention", ""),
+        "comparator": example.get("comparator", ""),
+        "outcome": example.get("outcome", ""),
+        "study_design": example.get("study_design", ""),
+    })
+    st.session_state.terms = example.get("keywords", suggest_terms_from_project(st.session_state.project))
+
+
+def render_framework_domain_guidance(project: dict):
+    domain = infer_domain(project)
+    framework = project.get("framework", "PICOS")
+    if domain == "Otomatis":
+        domain = "Peternakan"
+    guide = FRAMEWORK_GUIDES.get(framework, FRAMEWORK_GUIDES["PICOS"])
+    example = get_selected_example({**project, "domain": domain, "framework": framework})
+    target = TARGET_GUIDES.get(project.get("target_level", "Q1/Q2"), TARGET_GUIDES["Q1/Q2"])
+    profile = DOMAIN_PROFILES.get(domain, DOMAIN_PROFILES["Peternakan"])
+
+    st.subheader("Contoh dan Informasi Sesuai Pilihan")
+    st.caption("Bagian ini berubah otomatis mengikuti pilihan bidang, kerangka, dan target publikasi yang dipilih peneliti.")
+
+    t1, t2, t3, t4 = st.tabs(["Kerangka", "Contoh Topik", "Search & Database", "Insight Naskah"])
+    with t1:
+        st.markdown(f"**Kerangka terpilih:** {guide['name']}")
+        st.write(guide["focus"])
+        st.info(guide["best_for"])
+        comp_df = pd.DataFrame([{"Kode": k, "Penjelasan": v} for k, v in guide["components"].items()])
+        st.dataframe(comp_df, use_container_width=True, hide_index=True)
+        st.warning(guide["warning"])
+    with t2:
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            st.markdown(f"**Contoh judul untuk {domain} - {framework}:**")
+            st.success(example["title"])
+            st.markdown("**Contoh research question:**")
+            st.write(example["research_question"])
+        with c2:
+            if st.button("Gunakan contoh ini", use_container_width=True):
+                apply_example_to_project(example, domain, framework)
+                st.success("Contoh diterapkan ke judul, komponen review, dan search terms.")
+                st.rerun()
+        example_df = pd.DataFrame([
+            {"Komponen": "Population/Problem", "Isi": example.get("population", "")},
+            {"Komponen": "Intervention/Exposure", "Isi": example.get("intervention", "")},
+            {"Komponen": "Comparator", "Isi": example.get("comparator", "")},
+            {"Komponen": "Outcome", "Isi": example.get("outcome", "")},
+            {"Komponen": "Study Design", "Isi": example.get("study_design", "")},
+        ])
+        st.dataframe(example_df, use_container_width=True, hide_index=True)
+    with t3:
+        st.markdown("**Contoh search terms:**")
+        kw = example.get("keywords", {})
+        for label, key in [
+            ("Population terms", "population_terms"),
+            ("Intervention/Exposure terms", "intervention_terms"),
+            ("Comparator terms", "comparator_terms"),
+            ("Outcome terms", "outcome_terms"),
+            ("Study design terms", "study_terms"),
+        ]:
+            with st.expander(label, expanded=False):
+                st.code(kw.get(key, ""), language="text")
+        st.markdown("**Boolean search contoh:**")
+        st.code(build_search_string(kw), language="text")
+        c1, c2 = st.columns(2)
+        c1.markdown("**Database disarankan:**\n" + "\n".join([f"- {x}" for x in profile["databases"]]))
+        c2.markdown("**Quality assessment:**")
+        c2.write(profile["quality_tool"])
+    with t4:
+        st.markdown("**Insight berdasarkan contoh terpilih:**")
+        st.write(example["insight"])
+        st.markdown("**Arahan untuk target publikasi:**")
+        st.info(target["focus"])
+        st.write(target["minimum"])
+        st.markdown("**Catatan penulisan:**")
+        if framework == "PECO":
+            st.write("Gunakan istilah *exposure* secara konsisten pada judul, research question, eligibility criteria, dan tabel ekstraksi data. Jangan memaksa paparan menjadi intervensi.")
+        elif framework == "PICOS":
+            st.write("Tuliskan desain studi yang diterima sejak awal agar proses screening lebih objektif dan lebih siap untuk meta-analysis.")
+        else:
+            st.write("PICO boleh digunakan untuk tahap awal, tetapi tetap jelaskan study design pada eligibility criteria agar metode tidak terlalu longgar.")
+
+
+def make_guidance_markdown():
+    p = st.session_state.project
+    domain = infer_domain(p)
+    framework = p.get("framework", "PICOS")
+    guide = FRAMEWORK_GUIDES.get(framework, FRAMEWORK_GUIDES["PICOS"])
+    example = get_selected_example(p)
+    target = TARGET_GUIDES.get(p.get("target_level", "Q1/Q2"), TARGET_GUIDES["Q1/Q2"])
+    profile = DOMAIN_PROFILES.get(domain, DOMAIN_PROFILES["Peternakan"])
+    components = "\n".join([f"- **{k}**: {v}" for k, v in guide["components"].items()])
+    databases = "\n".join([f"- {db}" for db in profile["databases"]])
+    return f"""# Examples and Guidance
+
+## Pilihan Saat Ini
+- Domain: {domain}
+- Framework: {framework}
+- Target: {p.get('target_level', '')}
+- Review type: {p.get('review_type', '')}
+
+## Penjelasan Framework
+{guide['focus']}
+
+{guide['best_for']}
+
+### Komponen
+{components}
+
+Catatan: {guide['warning']}
+
+## Contoh Sesuai Pilihan
+**Judul contoh:** {example.get('title', '')}
+
+**Research question:** {example.get('research_question', '')}
+
+- Population/Problem: {example.get('population', '')}
+- Intervention/Exposure: {example.get('intervention', '')}
+- Comparator: {example.get('comparator', '')}
+- Outcome: {example.get('outcome', '')}
+- Study Design: {example.get('study_design', '')}
+
+## Contoh Boolean Search
+```text
+{build_search_string(example.get('keywords', {}))}
+```
+
+## Database Disarankan
+{databases}
+
+## Quality Assessment Disarankan
+{profile.get('quality_tool', '')}
+
+## Insight Topik
+{example.get('insight', '')}
+
+## Arahan Target Publikasi
+{target['focus']}
+
+{target['minimum']}
+"""
+
+
+def df_to_xlsx_bytes(df: pd.DataFrame, sheet_name: str = "Sheet1") -> bytes:
+    mem = BytesIO()
+    with pd.ExcelWriter(mem, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
+    mem.seek(0)
+    return mem.getvalue()
+
 def normalize_columns(df: pd.DataFrame):
     df = df.copy()
     df.columns = [str(c).strip().lower().replace(" ", "_").replace("-", "_") for c in df.columns]
@@ -373,30 +856,6 @@ def read_uploaded_file(uploaded_file):
     if name.endswith(".ris"):
         return parse_ris(uploaded_file.getvalue().decode("utf-8", errors="ignore"))
     raise ValueError("Format belum didukung. Gunakan XLSX, XLS, atau RIS.")
-
-
-def df_to_xlsx_bytes(df: pd.DataFrame, sheet_name: str = "Data") -> bytes:
-    """Convert dataframe to a readable Excel workbook for Streamlit download/export."""
-    output = BytesIO()
-    safe_sheet = re.sub(r"[\\/*?:\[\]]", "_", sheet_name)[:31] or "Data"
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        export_df = df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame(df)
-        export_df.to_excel(writer, index=False, sheet_name=safe_sheet)
-        worksheet = writer.sheets[safe_sheet]
-        worksheet.freeze_panes = "A2"
-        for cell in worksheet[1]:
-            font = copy(cell.font)
-            font.bold = True
-            cell.font = font
-            cell.alignment = cell.alignment.copy(horizontal="center", vertical="center", wrap_text=True)
-        for column_cells in worksheet.columns:
-            values = [str(c.value) if c.value is not None else "" for c in column_cells]
-            max_len = max([len(v) for v in values] + [8])
-            worksheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_len + 2, 12), 42)
-        for row in worksheet.iter_rows():
-            for cell in row:
-                cell.alignment = cell.alignment.copy(vertical="top", wrap_text=True)
-    return output.getvalue()
 
 
 def flag_duplicates(df: pd.DataFrame):
@@ -749,9 +1208,11 @@ def make_export_zip():
         z.writestr("protocol_systematic_review.md", make_protocol_markdown())
         z.writestr("methods_template.md", make_methods_template())
         z.writestr("evidence_insight_report.md", build_insight_report())
-        z.writestr("screening_results.xlsx", df_to_xlsx_bytes(st.session_state.articles, "Screening Results"))
-        z.writestr("quality_assessment.xlsx", df_to_xlsx_bytes(st.session_state.quality, "Quality Assessment"))
-        z.writestr("data_extraction.xlsx", df_to_xlsx_bytes(st.session_state.extraction, "Data Extraction"))
+        z.writestr("examples_and_guidance.md", make_guidance_markdown())
+        z.writestr("screening_results.xlsx", df_to_xlsx_bytes(st.session_state.articles, "Screening"))
+        z.writestr("quality_assessment.xlsx", df_to_xlsx_bytes(st.session_state.quality, "Quality"))
+        z.writestr("data_extraction.xlsx", df_to_xlsx_bytes(st.session_state.extraction, "Extraction"))
+        z.writestr("prisma_counts.xlsx", df_to_xlsx_bytes(pd.DataFrame([get_prisma_counts(True)]), "PRISMA"))
         z.writestr("project_state.json", json.dumps({
             "project": st.session_state.project,
             "criteria": st.session_state.criteria,
@@ -762,12 +1223,13 @@ def make_export_zip():
     return mem.getvalue()
 
 
-def download_df_button(label, df, filename, sheet_name="Data"):
-    xlsx_name = filename.rsplit(".", 1)[0] + ".xlsx"
+def download_df_button(label, df, filename):
+    if not filename.lower().endswith(".xlsx"):
+        filename = filename.rsplit(".", 1)[0] + ".xlsx"
     st.download_button(
         label,
-        df_to_xlsx_bytes(df, sheet_name),
-        xlsx_name,
+        df_to_xlsx_bytes(df, filename.rsplit(".", 1)[0][:31]),
+        filename,
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
     )
@@ -797,7 +1259,7 @@ def page_workflow():
     steps = [
         ("1", "Judul & PICOS/PECO", "Masukkan judul, bidang, target jurnal, dan komponen PICOS/PECO.", "Output: skor kesiapan judul, kelemahan, rekomendasi judul, research question."),
         ("2", "Protocol & Search Strategy", "Rapikan protocol, kriteria inklusi-eksklusi, dan Boolean search.", "Output: protocol awal dan search string yang bisa dipakai di Scopus/WoS/database lain."),
-        ("3", "Import Artikel", "Unggah hasil ekspor XLSX/RIS dari database.", "Output: data artikel yang sudah dinormalisasi dan dideduplikasi."),
+        ("3", "Import Artikel", "Unggah hasil ekspor XLSX/XLS/RIS dari database.", "Output: data artikel yang sudah dinormalisasi dan dideduplikasi."),
         ("4", "Screening", "Gunakan skor relevansi PICOS sebagai bantuan, lalu tetapkan keputusan Include/Maybe/Exclude.", "Output: daftar artikel eligible untuk full-text."),
         ("5", "PRISMA", "Pantau jumlah record dari identifikasi sampai studi include final.", "Output: angka PRISMA untuk naskah."),
         ("6", "Quality Assessment", "Nilai kualitas studi berdasarkan checklist.", "Output: kategori Low/Moderate/High."),
@@ -871,6 +1333,8 @@ def page_title_protocol():
         st.session_state.project["research_question"] = result["research_questions"][0]
         st.success("Research question diterapkan.")
 
+    render_framework_domain_guidance(st.session_state.project)
+
 
 def page_protocol_search():
     st.header("2. Protocol dan Search Strategy")
@@ -905,6 +1369,8 @@ def page_protocol_search():
     c2.write(profile["quality_tool"])
     st.subheader("Boolean Search String")
     st.code(build_search_string(st.session_state.terms), language="text")
+    with st.expander("Lihat contoh dan informasi sesuai pilihan saat ini"):
+        render_framework_domain_guidance(st.session_state.project)
     st.download_button("Download protocol.md", make_protocol_markdown().encode("utf-8"), "protocol_systematic_review.md", "text/markdown", use_container_width=True)
     with st.expander("Preview protocol"):
         st.markdown(make_protocol_markdown())
@@ -912,16 +1378,10 @@ def page_protocol_search():
 
 def page_import_screening():
     st.header("3-4. Import Artikel dan Screening Terintegrasi")
-    st.write("Unggah hasil ekspor dari database dalam format XLSX atau RIS. Sistem akan menormalisasi kolom, mendeteksi duplikasi, dan memberi skor relevansi berdasarkan PICOS/PECO.")
+    st.write("Unggah hasil ekspor dari database dalam format XLSX, XLS, atau RIS. Sistem akan menormalisasi kolom, mendeteksi duplikasi, dan memberi skor relevansi berdasarkan PICOS/PECO.")
     sample_path = "data/sample_articles.xlsx"
     with open(sample_path, "rb") as f:
-        st.download_button(
-            "Download template/sample XLSX",
-            f.read(),
-            "sample_articles.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
+        st.download_button("Download template/sample XLSX", f.read(), "sample_articles.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
     upload = st.file_uploader("Upload file artikel", type=["xlsx", "xls", "ris"])
     col1, col2 = st.columns(2)
     if upload is not None:
@@ -1124,6 +1584,7 @@ def page_insight_export():
     c1.download_button("Download protocol.md", make_protocol_markdown().encode("utf-8"), "protocol_systematic_review.md", "text/markdown", use_container_width=True)
     c2.download_button("Download methods_template.md", make_methods_template().encode("utf-8"), "methods_template.md", "text/markdown", use_container_width=True)
     c3.download_button("Download insight_report.md", report.encode("utf-8"), "evidence_insight_report.md", "text/markdown", use_container_width=True)
+    st.download_button("Download examples_and_guidance.md", make_guidance_markdown().encode("utf-8"), "examples_and_guidance.md", "text/markdown", use_container_width=True)
     st.download_button("Download semua hasil sebagai ZIP", make_export_zip(), "systematic_review_export_package.zip", "application/zip", use_container_width=True)
 
 

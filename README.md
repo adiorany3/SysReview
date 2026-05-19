@@ -2,6 +2,12 @@
 
 Aplikasi Streamlit untuk membantu peneliti bidang agro, peternakan, pangan, agronomi, perikanan, akuakultur, dan lingkungan menyusun systematic review yang lebih rapi, terintegrasi, dan berbasis kaidah evidence synthesis.
 
+## Versi ini
+
+**Enhanced Examples & Guidance Edition**
+
+Versi ini menambahkan contoh dan informasi otomatis sesuai pilihan pengguna. Ketika peneliti memilih bidang dan kerangka PICO/PICOS/PECO, sistem menampilkan contoh judul, komponen review, research question, keyword, Boolean search, database, quality assessment, dan insight naskah yang sesuai.
+
 ## Fitur utama
 
 1. **Judul & PICOS/PECO Analyzer**
@@ -9,43 +15,53 @@ Aplikasi Streamlit untuk membantu peneliti bidang agro, peternakan, pangan, agro
    - Skor kesiapan menuju target Q-level.
    - Deteksi kelemahan judul.
    - Rekomendasi judul dan research question.
+   - Contoh dinamis berdasarkan bidang dan framework.
 
-2. **Protocol & Search Strategy**
+2. **Contoh dan Informasi Sesuai Pilihan**
+   - Penjelasan PICO, PICOS, dan PECO.
+   - Contoh topik untuk peternakan, agro/agronomi, perikanan/akuakultur, pangan, dan lingkungan.
+   - Contoh komponen Population, Intervention/Exposure, Comparator, Outcome, dan Study Design.
+   - Contoh Boolean search dan keyword.
+   - Insight kelemahan, kekuatan, serta catatan untuk target Q1/Q2, Q2/Q3, Scopus awal, dan Sinta/Kampus.
+
+3. **Protocol & Search Strategy**
    - Kriteria inklusi-eksklusi.
    - Boolean search string otomatis.
    - Rekomendasi database dan quality assessment sesuai bidang.
 
-3. **Import & Screening**
-   - Mendukung XLSX dan RIS; seluruh template dan export tabel memakai XLSX agar mudah dibaca di Microsoft Excel.
+4. **Import & Screening**
+   - Mendukung XLSX, XLS, dan RIS.
    - Normalisasi kolom otomatis.
    - Deteksi duplikasi DOI/judul.
    - Skor relevansi PICOS/PECO.
    - Saran screening otomatis: Include, Maybe, Exclude.
 
-4. **PRISMA & Quality Assessment**
+5. **PRISMA & Quality Assessment**
    - Ringkasan PRISMA otomatis berdasarkan screening.
    - Checklist quality assessment.
    - Kategori kualitas Low, Moderate, High.
 
-5. **Data Extraction**
+6. **Data Extraction**
    - Ekstraksi outcome, effect direction, effect size, p-value, finding, limitation, dan implication.
 
-6. **Evidence Insight Report**
+7. **Evidence Insight Report**
    - Insight otomatis dari hasil judul, screening, PRISMA, quality assessment, dan data extraction.
    - Kekuatan bukti sementara.
    - Kesiapan meta-analysis.
    - Gap riset otomatis.
    - Rekomendasi tindak lanjut untuk naskah.
 
-7. **Export Package**
+8. **Export Package**
    - Protocol markdown.
    - Methods template.
    - Insight report.
+   - Examples and guidance markdown.
    - Screening XLSX.
-   - Quality XLSX.
-   - Extraction XLSX.
+   - PRISMA counts XLSX.
+   - Quality assessment XLSX.
+   - Data extraction XLSX.
    - Project state JSON.
-   - Semua hasil bisa diekspor sebagai ZIP dari aplikasi dalam format XLSX agar mudah dibaca dan diedit di Microsoft Excel.
+   - Semua hasil bisa diekspor sebagai ZIP dari aplikasi.
 
 ## Cara menjalankan lokal
 
@@ -66,12 +82,14 @@ streamlit run app.py
 
 1. Buka **Panduan Workflow**.
 2. Isi **Judul & PICOS/PECO**.
-3. Rapikan **Protocol & Search**.
-4. Import artikel dari database menggunakan template XLSX atau file RIS.
-5. Lakukan screening.
-6. Pantau PRISMA dan isi quality assessment.
-7. Isi data extraction.
-8. Buka Insight & Export untuk melihat laporan insight dan mengunduh seluruh hasil.
+3. Baca contoh dan informasi sesuai pilihan bidang/framework.
+4. Terapkan contoh apabila ingin memakai template awal.
+5. Rapikan **Protocol & Search**.
+6. Import artikel dari database memakai XLSX/XLS/RIS.
+7. Lakukan screening.
+8. Pantau PRISMA dan isi quality assessment.
+9. Isi data extraction.
+10. Buka Insight & Export untuk melihat laporan insight dan mengunduh seluruh hasil.
 
 ## Catatan penting
 
