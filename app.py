@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 APP_TITLE = "Agro Systematic Review Builder"
-APP_VERSION = "Q-Level Manuscript Builder + Save & Resume Edition"
+APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + Optional Personal AI Edition"
 
 ARTICLE_COLUMNS = [
     "id", "title", "authors", "year", "journal", "doi", "country", "study_design",
@@ -448,6 +448,11 @@ def init_state():
             "overwrite_generated": True,
             "last_sync": "Belum pernah sinkron",
         },
+        "ai_config": {
+            "mode": "Offline Mode",
+            "model": "gpt-4.1-mini",
+        },
+        "ai_outputs": {},
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -1787,8 +1792,11 @@ def make_export_zip():
         z.writestr("novelty_gap_analysis.xlsx", df_to_xlsx_bytes(novelty_gap_df(), "Novelty_Gap"))
         z.writestr("journal_targeting.xlsx", df_to_xlsx_bytes(journal_targeting_df(), "Journal_Targeting"))
         z.writestr("reviewer_check.xlsx", df_to_xlsx_bytes(reviewer_check_df(), "Reviewer_Check"))
+        for ai_name, ai_text in st.session_state.get("ai_outputs", {}).items():
+            safe_name = re.sub(r"[^a-zA-Z0-9]+", "_", str(ai_name)).strip("_").lower() or "ai_insight"
+            z.writestr(f"online_ai_{safe_name}.md", str(ai_text))
         z.writestr("project_state.srproj.json", resume_project_state_bytes("Export ZIP"))
-        z.writestr("project_state_README.txt", "Gunakan file project_state.srproj.json pada menu sidebar 'Simpan & lanjutkan project' untuk melanjutkan pekerjaan tanpa mulai dari awal.")
+        z.writestr("project_state_README.txt", "Gunakan file project_state.srproj.json pada menu sidebar 'Simpan & lanjutkan project' untuk melanjutkan pekerjaan tanpa mulai dari awal. API key pribadi tidak disimpan di file project/export.")
     mem.seek(0)
     return mem.getvalue()
 
@@ -1806,11 +1814,199 @@ def download_df_button(label, df, filename):
 
 
 
+def clear_personal_api_key():
+    """Remove the user-provided API key from the current Streamlit session only."""
+    for key in ["personal_openai_api_key", "openai_api_key_input"]:
+        if key in st.session_state:
+            del st.session_state[key]
+
+
+def get_personal_api_key() -> str:
+    """Read the optional personal API key from session state without persisting it."""
+    return str(st.session_state.get("personal_openai_api_key", "") or "").strip()
+
+
+def build_ai_project_context(max_records: int = 25) -> str:
+    """Create a compact JSON context for optional online AI insight.
+
+    The context intentionally excludes API keys, Streamlit session internals, and raw files.
+    It only includes systematic-review project data that the user has entered/imported.
+    """
+    counts = get_prisma_counts(True)
+    evidence = infer_evidence_strength()
+    title_result = analyze_title(st.session_state.project)
+
+    def limited_records(df: pd.DataFrame, cols: list, limit: int = max_records):
+        if df is None or df.empty:
+            return []
+        available = [c for c in cols if c in df.columns]
+        return df[available].head(limit).fillna("").to_dict(orient="records")
+
+    payload = {
+        "project": st.session_state.project,
+        "criteria": st.session_state.criteria,
+        "framework": st.session_state.project.get("framework", "PICOS"),
+        "search_strategy": build_search_string(st.session_state.terms),
+        "search_terms": st.session_state.terms,
+        "prisma_counts": counts,
+        "offline_title_analysis": title_result,
+        "offline_evidence_summary": evidence,
+        "recommendations_rule_based": generate_recommendations(),
+        "screening_sample": limited_records(
+            st.session_state.articles,
+            ["id", "title", "year", "journal", "country", "source_database", "picos_relevance_score", "reviewer1_decision", "reviewer2_decision", "consensus_decision", "screening_decision", "full_text_decision", "exclusion_reason"],
+        ),
+        "quality_sample": limited_records(
+            st.session_state.quality,
+            ["id", "title", "quality_score", "quality_category", "overall_risk_of_bias", "certainty_of_evidence", "grade_downgrade_reason"],
+        ),
+        "extraction_sample": limited_records(
+            st.session_state.extraction,
+            ["id", "title", "species_or_crop", "intervention", "comparator", "main_outcome", "outcome_unit", "effect_direction", "effect_size", "key_finding", "limitations", "implication", "novelty_note"],
+        ),
+        "notes": st.session_state.notes,
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+
+
+def call_openai_responses_api(api_key: str, model: str, user_prompt: str) -> tuple[bool, str]:
+    """Call OpenAI Responses API using the user's temporary personal API key."""
+    if not api_key:
+        return False, "API key belum diisi. Gunakan Offline Mode atau masukkan API key pribadi terlebih dahulu."
+    try:
+        from openai import OpenAI
+    except Exception:
+        return False, "Package 'openai' belum terpasang. Jalankan: pip install openai"
+
+    try:
+        client = OpenAI(api_key=api_key)
+        response = client.responses.create(
+            model=model or "gpt-4.1-mini",
+            input=[
+                {
+                    "role": "developer",
+                    "content": (
+                        "You are an academic systematic review assistant for agriculture, livestock, aquaculture, food science, and environmental evidence synthesis. "
+                        "Analyze only the provided project data. Do not fabricate citations, databases, study counts, or numerical results. "
+                        "Write in formal Bahasa Indonesia, concise but useful for manuscript improvement toward reputable journals. "
+                        "When evidence is insufficient, say exactly what is missing and what the researcher should complete."
+                    ),
+                },
+                {"role": "user", "content": user_prompt},
+            ],
+            max_output_tokens=2200,
+        )
+        text = getattr(response, "output_text", None)
+        if text:
+            return True, text
+        # Fallback for SDK versions that expose output in a lower-level structure.
+        try:
+            chunks = []
+            for item in getattr(response, "output", []) or []:
+                for content in getattr(item, "content", []) or []:
+                    maybe_text = getattr(content, "text", None)
+                    if maybe_text:
+                        chunks.append(maybe_text)
+            if chunks:
+                return True, "\n".join(chunks)
+        except Exception:
+            pass
+        return True, str(response)
+    except Exception as exc:
+        msg = str(exc)
+        if "api_key" in msg.lower() or "authentication" in msg.lower() or "401" in msg:
+            return False, "API key tidak valid, sudah dicabut, atau tidak memiliki akses model yang dipilih."
+        if "rate" in msg.lower() or "quota" in msg.lower() or "429" in msg:
+            return False, "Limit/rate limit API tercapai atau saldo/quota akun API tidak mencukupi."
+        return False, f"Gagal membuat AI insight: {exc}"
+
+
+def make_ai_task_prompt(task: str) -> str:
+    context = build_ai_project_context()
+    task_instructions = {
+        "Novelty & Gap Insight": "Buat analisis novelty dan research gap. Jelaskan gap utama, kekuatan topik, kelemahan data, dan cara menulis novelty pada Introduction dan Discussion.",
+        "Discussion Draft": "Buat draft narasi Discussion awal berbasis data project. Jangan mengarang angka. Hubungkan arah efek, kualitas bukti, risiko bias, heterogenitas, dan implikasi praktis.",
+        "Reviewer Simulation": "Bertindak sebagai reviewer jurnal Q-level. Berikan komentar major dan minor, risiko penolakan, serta tindakan revisi prioritas.",
+        "Manuscript Improvement Plan": "Buat rencana perbaikan naskah langkah demi langkah dari title, abstract, methods, results, discussion, limitation, sampai conclusion.",
+        "Meta-analysis Advice": "Nilai kesiapan meta-analysis. Jelaskan data apa yang kurang, outcome yang potensial, dan subgroup analysis yang disarankan.",
+    }
+    instruction = task_instructions.get(task, task_instructions["Novelty & Gap Insight"])
+    return f"""Tugas: {instruction}
+
+Data project systematic review:
+```json
+{context}
+```
+
+Format jawaban yang diminta:
+1. Ringkasan diagnosis
+2. Insight utama
+3. Bagian naskah yang perlu diperbaiki
+4. Rekomendasi tindakan praktis
+5. Catatan kehati-hatian agar peneliti tidak menyimpulkan berlebihan
+"""
+
+
+def render_online_ai_insight_panel(location: str = ""):
+    """Render optional online AI insight tools using a temporary personal API key."""
+    ai_cfg = st.session_state.get("ai_config", {})
+    mode = ai_cfg.get("mode", "Offline Mode")
+    api_key = get_personal_api_key()
+    model = ai_cfg.get("model", "gpt-4.1-mini")
+
+    st.subheader("Online AI Insight Opsional")
+    st.caption("Fitur ini opsional. Tanpa API key, seluruh sistem tetap berjalan menggunakan Offline Mode berbasis rule, checklist, dan template.")
+
+    if mode != "Online AI Mode":
+        st.info("Online AI Mode belum aktif. Aktifkan dari sidebar bila ingin memakai API key pribadi sementara.")
+        return
+
+    if not api_key:
+        st.warning("Online AI Mode aktif, tetapi API key pribadi belum diisi di sidebar. Masukkan API key atau kembali ke Offline Mode.")
+        return
+
+    st.success("Online AI Mode aktif menggunakan API key pribadi dari sesi ini. API key tidak disimpan ke project state, ZIP export, XLSX, DOCX, atau Markdown.")
+    st.caption("Data project yang dikirim ke API mengikuti pilihan tombol di bawah. Pastikan tidak ada data sensitif yang tidak ingin Anda kirim ke layanan API.")
+
+    task = st.selectbox(
+        "Pilih jenis insight online",
+        ["Novelty & Gap Insight", "Discussion Draft", "Reviewer Simulation", "Manuscript Improvement Plan", "Meta-analysis Advice"],
+        key=f"ai_task_select_{location}",
+    )
+    with st.expander("Lihat ringkasan data yang akan dikirim ke API", expanded=False):
+        st.code(build_ai_project_context(max_records=10), language="json")
+
+    if st.button("🤖 Buat AI Insight Online", key=f"make_ai_insight_{location}", use_container_width=True):
+        prompt = make_ai_task_prompt(task)
+        with st.spinner("Membuat AI insight online berdasarkan data project..."):
+            ok, result = call_openai_responses_api(api_key, model, prompt)
+        if ok:
+            st.session_state.ai_outputs[task] = result
+            st.success("AI insight berhasil dibuat.")
+        else:
+            st.error(result)
+
+    if st.session_state.get("ai_outputs"):
+        st.markdown("### Hasil AI Insight Terakhir")
+        for name, text in st.session_state.ai_outputs.items():
+            with st.expander(name, expanded=(name == task)):
+                st.markdown(text)
+                st.download_button(
+                    f"Download {name}.md",
+                    text.encode("utf-8"),
+                    f"online_ai_{re.sub(r'[^a-zA-Z0-9]+', '_', name).strip('_').lower()}.md",
+                    "text/markdown",
+                    use_container_width=True,
+                    key=f"download_ai_{location}_{name}",
+                )
+
+
 def reset_project_state():
     """Reset all user-entered project data and return the app to its initial state."""
     keys_to_remove = [
         "project", "criteria", "terms", "articles", "quality", "extraction",
-        "prisma_manual", "notes", "sync_config", "reset_confirm_checkbox",
+        "prisma_manual", "notes", "sync_config", "ai_config", "ai_outputs",
+        "personal_openai_api_key", "openai_api_key_input", "reset_confirm_checkbox",
         "reset_confirm_text", "reset_success_message",
     ]
     for key in keys_to_remove:
@@ -1838,6 +2034,41 @@ def render_sidebar():
     if st.sidebar.button("🔄 Sinkronkan semua modul", use_container_width=True):
         sync_downstream_from_project(reason="tombol sidebar")
         st.sidebar.success("Semua menu sudah mengikuti isi menu sebelumnya.")
+
+    with st.sidebar.expander("🤖 Online AI Insight (opsional)", expanded=False):
+        ai_cfg = st.session_state.ai_config
+        mode_options = ["Offline Mode", "Online AI Mode"]
+        current_mode = ai_cfg.get("mode", "Offline Mode")
+        ai_cfg["mode"] = st.radio(
+            "Mode analisis",
+            mode_options,
+            index=mode_options.index(current_mode) if current_mode in mode_options else 0,
+            key="ai_mode_radio",
+            help="Offline Mode tidak membutuhkan API. Online AI Mode memakai API key pribadi user hanya selama sesi berjalan.",
+        )
+        ai_cfg["model"] = st.text_input(
+            "Model OpenAI",
+            value=ai_cfg.get("model", "gpt-4.1-mini"),
+            key="ai_model_input",
+            help="Gunakan model yang tersedia pada akun API Anda. Contoh umum: gpt-4.1-mini atau model lain yang Anda miliki aksesnya.",
+        ).strip() or "gpt-4.1-mini"
+        if st.button("Hapus API key dari sesi ini", use_container_width=True):
+            clear_personal_api_key()
+            st.success("API key pribadi sudah dihapus dari sesi aplikasi.")
+            st.rerun()
+        st.text_input(
+            "OpenAI API Key pribadi",
+            type="password",
+            key="personal_openai_api_key",
+            help="Opsional. API key hanya dipakai selama sesi ini dan tidak disimpan ke project state, ZIP export, XLSX, DOCX, atau Markdown.",
+        )
+        if ai_cfg.get("mode") == "Online AI Mode" and get_personal_api_key():
+            st.success("Online AI aktif untuk sesi ini.")
+        elif ai_cfg.get("mode") == "Online AI Mode":
+            st.warning("Online AI aktif, tetapi API key belum diisi.")
+        else:
+            st.info("Offline Mode aktif. Sistem tetap berjalan tanpa API.")
+        st.caption("Catatan: data project hanya dikirim ke API saat Anda menekan tombol Buat AI Insight Online.")
 
     with st.sidebar.expander("💾 Simpan & lanjutkan project", expanded=False):
         st.caption("Unduh file project setelah menyelesaikan langkah apa pun. File ini dapat diunggah kembali untuk melanjutkan pekerjaan tanpa mulai dari awal.")
@@ -2249,6 +2480,7 @@ def page_qlevel_tools():
         "Journal Targeting",
         "Manuscript Builder",
         "Reviewer Check",
+        "Online AI Insight",
     ])
 
     with tabs[0]:
@@ -2331,6 +2563,9 @@ def page_qlevel_tools():
             st.success("Tidak ada catatan major otomatis. Tetap lakukan validasi manual oleh peneliti/pembimbing.")
         download_df_button("Download reviewer_check.xlsx", df, "reviewer_check.xlsx")
 
+    with tabs[8]:
+        render_online_ai_insight_panel("qlevel")
+
 def page_insight_export():
     st.header("9. Evidence Insight Report dan Export")
     sync_if_auto(reason="membuka insight & export")
@@ -2376,6 +2611,8 @@ def page_insight_export():
         if not qv.empty:
             col4.write("Kategori kualitas")
             col4.bar_chart(qv)
+
+    render_online_ai_insight_panel("insight_export")
 
     st.subheader("Export")
     c1, c2, c3 = st.columns(3)

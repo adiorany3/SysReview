@@ -1,6 +1,6 @@
 # Agro Systematic Review Builder
 
-**Q-Level Manuscript Builder + Save & Resume Edition**
+**Q-Level Manuscript Builder + Save & Resume + Optional Personal AI Edition**
 
 Aplikasi Streamlit ini dirancang untuk membantu peneliti menyusun systematic review bidang agro, peternakan, perikanan/akuakultur, pangan, dan lingkungan secara lebih terarah menuju standar naskah jurnal bereputasi.
 
@@ -66,7 +66,22 @@ Aplikasi Streamlit ini dirancang untuk membantu peneliti menyusun systematic rev
 - File project menyimpan judul, PICOS/PECO, protocol, search terms, artikel screening, PRISMA, quality assessment, data extraction, catatan, dan konfigurasi auto-sync.
 - Saat memuat project lama, sistem meminta konfirmasi agar project aktif tidak terganti secara tidak sengaja.
 
-### 9. Insight dan Export
+
+### 9. Optional Personal AI Insight
+- Default sistem tetap **Offline Mode** tanpa API.
+- Pengguna dapat mengaktifkan **Online AI Mode** dan memasukkan OpenAI API Key pribadi secara sementara.
+- API key dimasukkan melalui input password di sidebar.
+- API key tidak disimpan ke `.srproj.json`, ZIP export, XLSX, DOCX, Markdown, atau kode aplikasi.
+- Tersedia tombol **Hapus API key dari sesi ini**.
+- Insight online yang dapat dibuat:
+  - Novelty & Gap Insight
+  - Discussion Draft
+  - Reviewer Simulation
+  - Manuscript Improvement Plan
+  - Meta-analysis Advice
+- Data project hanya dikirim ke API saat pengguna menekan tombol **Buat AI Insight Online**.
+
+### 10. Insight dan Export
 - Evidence Insight Report otomatis.
 - Descriptive chart untuk tahun, negara, arah efek, dan kualitas.
 - Export ZIP berisi:
@@ -87,10 +102,11 @@ Aplikasi Streamlit ini dirancang untuk membantu peneliti menyusun systematic rev
   - `novelty_gap_analysis.xlsx`
   - `journal_targeting.xlsx`
   - `reviewer_check.xlsx`
+  - `online_ai_*.md` jika pengguna membuat AI insight online
   - `project_state.srproj.json`
   - `project_state_README.txt`
 
-### 10. Safe Reset
+### 11. Safe Reset
 - Tombol hapus/reset data project.
 - Konfirmasi dua langkah: centang pernyataan dan ketik `RESET`.
 - Data tidak akan terhapus tanpa konfirmasi lengkap.
@@ -122,6 +138,22 @@ streamlit run app.py
 7. Klik **Muat dan lanjutkan project**.
 
 Dengan cara ini, peneliti tidak perlu menyelesaikan systematic review dalam satu sesi. Proses dapat dihentikan pada tahap judul, protocol, screening, quality assessment, extraction, atau manuscript building, lalu dilanjutkan lagi dari file project yang sama.
+
+## Penggunaan API Key Personal
+
+Untuk aplikasi Streamlit online yang digunakan banyak orang, jangan menanam API key developer di dalam kode. Gunakan alur berikut:
+
+1. Buka sidebar **Online AI Insight (opsional)**.
+2. Pilih **Online AI Mode**.
+3. Masukkan OpenAI API Key pribadi pada kolom password.
+4. Pilih model yang tersedia pada akun API pengguna.
+5. Buka tab **Online AI Insight** pada Q-Level Tools atau halaman Insight & Export.
+6. Pilih jenis insight dan klik **Buat AI Insight Online**.
+7. Setelah selesai, klik **Hapus API key dari sesi ini** bila menggunakan perangkat bersama.
+
+Tanpa API key, aplikasi tetap berjalan penuh dengan Offline Mode berbasis rule, checklist, template, dan export dokumen.
+
+API key bersifat sementara pada sesi Streamlit dan sengaja tidak dimasukkan ke project state maupun export ZIP.
 
 ## Format Import Artikel
 
