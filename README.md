@@ -207,3 +207,33 @@ Sistem ini membantu menyusun dan mengecek kelengkapan naskah systematic review, 
 - interpretasi hasil;
 - author guidelines jurnal target.
 
+
+## Tambahan Panduan Contoh Riset per Bidang
+
+Paket ini menyertakan file `CONTOH_RISET_PER_BIDANG.md` yang berisi contoh topik systematic review untuk bidang:
+
+- Peternakan
+- Agro/Agronomi
+- Perikanan/Akuakultur
+- Pangan
+- Lingkungan
+- Teknik Pertanian dan Biosistem
+
+Panduan ini membantu pengguna menentukan framework PICO, PICOS, atau PECO sebelum masuk ke menu Title & Protocol Analyzer.
+
+## Update: Auto-isi contoh saat bidang/kerangka berubah
+
+Versi ini menambahkan logika agar pilihan **Bidang** dan **Kerangka** menjadi pemicu utama pengisian otomatis. Jika pengguna mengubah bidang, misalnya dari Peternakan ke Teknik Pertanian dan Biosistem, sistem dapat langsung menyesuaikan:
+
+- judul contoh;
+- Population/Problem;
+- Intervention/Exposure;
+- Comparator;
+- Outcome;
+- Study Design;
+- Research Question;
+- Search Terms;
+- Boolean Search Strategy;
+- Protocol, Screening Score, Quality Assessment, Data Extraction, Insight, dan Export.
+
+Fitur ini dapat dikendalikan melalui toggle **Otomatis isi contoh sesuai bidang/kerangka** pada Langkah 1 atau **Auto-isi contoh saat bidang berubah** di sidebar. Jika peneliti sudah mengedit manual dan tidak ingin datanya tertimpa contoh, matikan toggle tersebut. Peneliti juga tetap dapat memakai tombol **Terapkan contoh bidang ini sekarang** untuk mengisi ulang contoh kapan saja.

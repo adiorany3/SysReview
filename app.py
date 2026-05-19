@@ -505,6 +505,7 @@ def init_state():
         "sync_config": {
             "auto_sync": True,
             "overwrite_generated": True,
+            "auto_apply_domain_example": True,
             "last_sync": "Belum pernah sinkron",
         },
         "ai_config": {
@@ -815,6 +816,56 @@ def apply_example_to_project(example: dict, domain: str, framework: str):
     st.session_state.criteria = make_auto_criteria(st.session_state.project)
     sync_downstream_from_project(reason="contoh diterapkan")
 
+
+
+
+def apply_domain_framework_autofill(domain: str, framework: str, source: str = "perubahan bidang/kerangka"):
+    """Apply the default example for a selected domain and framework.
+
+    This keeps general project settings, but refreshes the review core fields so
+    downstream menus can immediately follow the selected research field.
+    """
+    if domain == "Otomatis":
+        inferred = infer_domain(st.session_state.project)
+        domain_to_use = inferred if inferred != "Otomatis" else "Peternakan"
+    else:
+        domain_to_use = domain
+
+    framework_to_use = framework if framework in FRAMEWORK_GUIDES else "PICOS"
+    example = get_selected_example({"domain": domain_to_use, "framework": framework_to_use})
+    keep = {
+        "target_level": st.session_state.project.get("target_level", "Q1/Q2"),
+        "review_type": st.session_state.project.get("review_type", "Systematic Review and Meta-Analysis"),
+        "year_range": st.session_state.project.get("year_range", "2015-2026"),
+        "language": st.session_state.project.get("language", "English and Bahasa Indonesia"),
+        "geographical_scope": st.session_state.project.get("geographical_scope", "Global"),
+        "date_started": st.session_state.project.get("date_started", str(date.today())),
+    }
+    apply_example_to_project(example, domain_to_use, framework_to_use)
+    st.session_state.project.update(keep)
+    sync_downstream_from_project(reason=source)
+    return example
+
+
+def render_current_domain_example_preview(domain: str, framework: str):
+    """Show the example that will be used when the field/framework is selected."""
+    domain_to_use = domain if domain != "Otomatis" else infer_domain(st.session_state.project)
+    if domain_to_use == "Otomatis":
+        domain_to_use = "Peternakan"
+    example = get_selected_example({"domain": domain_to_use, "framework": framework})
+    with st.expander("Lihat contoh yang akan diterapkan untuk pilihan ini", expanded=False):
+        st.markdown(f"**Bidang:** {domain_to_use}  ")
+        st.markdown(f"**Kerangka:** {framework}")
+        st.success(example.get("title", ""))
+        st.dataframe(pd.DataFrame([
+            {"Komponen": "Population/Problem", "Contoh": example.get("population", "")},
+            {"Komponen": "Intervention/Exposure", "Contoh": example.get("intervention", "")},
+            {"Komponen": "Comparator", "Contoh": example.get("comparator", "")},
+            {"Komponen": "Outcome", "Contoh": example.get("outcome", "")},
+            {"Komponen": "Study Design", "Contoh": example.get("study_design", "")},
+            {"Komponen": "Research Question", "Contoh": example.get("research_question", "")},
+        ]), use_container_width=True, hide_index=True)
+        st.code(build_search_string(example.get("keywords", {})), language="text")
 
 def render_framework_domain_guidance(project: dict):
     domain = infer_domain(project)
@@ -2219,6 +2270,7 @@ def render_sidebar():
     cfg = st.session_state.sync_config
     cfg["auto_sync"] = st.sidebar.toggle("Auto-sync antarmenu", value=cfg.get("auto_sync", True), help="Jika aktif, isi Protocol, Search Strategy, Screening Score, PRISMA, Quality, Extraction, Insight, dan Export otomatis mengikuti menu sebelumnya.")
     cfg["overwrite_generated"] = st.sidebar.toggle("Timpa isi otomatis", value=cfg.get("overwrite_generated", True), help="Jika aktif, sistem akan memperbarui research question, kriteria, dan search terms dari Judul & PICOS/PECO. Matikan jika ingin menjaga edit manual.")
+    cfg["auto_apply_domain_example"] = st.sidebar.toggle("Auto-isi contoh saat bidang berubah", value=cfg.get("auto_apply_domain_example", True), help="Jika aktif, saat Bidang/Kerangka diubah, judul, Population, Intervention/Exposure, Comparator, Outcome, Study Design, Research Question, dan Search Terms akan diisi dari contoh bidang terkait.")
     st.sidebar.caption(f"Sinkron terakhir: {cfg.get('last_sync', 'Belum pernah sinkron')}")
     st.sidebar.progress(pct / 100)
     st.sidebar.caption(f"Progress: {pct}%")
@@ -2409,29 +2461,100 @@ def page_title_protocol():
         "application/json",
         use_container_width=True,
     )
-    p = st.session_state.project.copy()
-    with st.form("project_form"):
-        p["title"] = st.text_area("Judul sementara", value=p.get("title", ""), height=80)
-        c1, c2, c3, c4 = st.columns(4)
-        domains = ["Peternakan", "Agro/Agronomi", "Teknik Pertanian dan Biosistem", "Perikanan/Akuakultur", "Pangan", "Lingkungan", "Otomatis"]
-        p["domain"] = c1.selectbox("Bidang", domains, index=domains.index(p.get("domain", "Peternakan")) if p.get("domain", "Peternakan") in domains else 0)
-        p["framework"] = c2.selectbox("Kerangka", ["PICOS", "PECO", "PICO"], index=["PICOS", "PECO", "PICO"].index(p.get("framework", "PICOS")) if p.get("framework", "PICOS") in ["PICOS", "PECO", "PICO"] else 0)
-        p["target_level"] = c3.selectbox("Target", ["Q1/Q2", "Q2/Q3", "Scopus awal", "Sinta/Kampus"], index=["Q1/Q2", "Q2/Q3", "Scopus awal", "Sinta/Kampus"].index(p.get("target_level", "Q1/Q2")) if p.get("target_level", "Q1/Q2") in ["Q1/Q2", "Q2/Q3", "Scopus awal", "Sinta/Kampus"] else 0)
-        p["geographical_scope"] = c4.selectbox("Cakupan", ["Global", "Asia", "Indonesia", "Lokal/Daerah"], index=["Global", "Asia", "Indonesia", "Lokal/Daerah"].index(p.get("geographical_scope", "Global")) if p.get("geographical_scope", "Global") in ["Global", "Asia", "Indonesia", "Lokal/Daerah"] else 0)
-        c5, c6 = st.columns(2)
-        p["population"] = c5.text_input("Population / Problem", value=p.get("population", ""))
-        p["intervention"] = c6.text_input("Intervention / Exposure", value=p.get("intervention", ""))
-        p["comparator"] = c5.text_input("Comparator", value=p.get("comparator", ""))
-        p["outcome"] = c6.text_input("Outcome", value=p.get("outcome", ""))
-        p["study_design"] = c5.text_input("Study design", value=p.get("study_design", ""))
-        p["year_range"] = c6.text_input("Rentang tahun", value=p.get("year_range", "2015-2026"))
-        p["language"] = c5.text_input("Bahasa artikel", value=p.get("language", "English and Bahasa Indonesia"))
-        p["review_type"] = c6.selectbox("Jenis review", ["Systematic Review", "Systematic Review and Meta-Analysis", "Systematic Map", "Scoping Review"], index=["Systematic Review", "Systematic Review and Meta-Analysis", "Systematic Map", "Scoping Review"].index(p.get("review_type", "Systematic Review and Meta-Analysis")) if p.get("review_type", "Systematic Review and Meta-Analysis") in ["Systematic Review", "Systematic Review and Meta-Analysis", "Systematic Map", "Scoping Review"] else 1)
-        submitted = st.form_submit_button("Simpan dan analisis", use_container_width=True)
-    if submitted:
+
+    p = st.session_state.project
+    cfg = st.session_state.sync_config
+
+    st.subheader("A. Pilih bidang dan kerangka review")
+    st.caption("Jika bidang atau kerangka diubah, sistem dapat langsung mengisi contoh yang relevan agar peneliti lebih mudah menyesuaikan topik.")
+    d1, d2, d3, d4 = st.columns(4)
+    domains = ["Peternakan", "Agro/Agronomi", "Teknik Pertanian dan Biosistem", "Perikanan/Akuakultur", "Pangan", "Lingkungan", "Otomatis"]
+    frameworks = ["PICOS", "PECO", "PICO"]
+    targets = ["Q1/Q2", "Q2/Q3", "Scopus awal", "Sinta/Kampus"]
+    scopes = ["Global", "Asia", "Indonesia", "Lokal/Daerah"]
+
+    selected_domain = d1.selectbox(
+        "Bidang",
+        domains,
+        index=domains.index(p.get("domain", "Peternakan")) if p.get("domain", "Peternakan") in domains else 0,
+        help="Saat bidang berubah, contoh judul dan komponen review akan mengikuti bidang ini.",
+    )
+    selected_framework = d2.selectbox(
+        "Kerangka",
+        frameworks,
+        index=frameworks.index(p.get("framework", "PICOS")) if p.get("framework", "PICOS") in frameworks else 0,
+        help="PICOS/PICO untuk intervensi, PECO untuk paparan/exposure.",
+    )
+    p["target_level"] = d3.selectbox(
+        "Target",
+        targets,
+        index=targets.index(p.get("target_level", "Q1/Q2")) if p.get("target_level", "Q1/Q2") in targets else 0,
+    )
+    p["geographical_scope"] = d4.selectbox(
+        "Cakupan",
+        scopes,
+        index=scopes.index(p.get("geographical_scope", "Global")) if p.get("geographical_scope", "Global") in scopes else 0,
+    )
+
+    auto_apply = st.toggle(
+        "Otomatis isi contoh sesuai bidang/kerangka",
+        value=cfg.get("auto_apply_domain_example", True),
+        help="Jika aktif, perubahan Bidang/Kerangka akan mengisi ulang judul, population, intervention/exposure, comparator, outcome, study design, research question, dan search terms berdasarkan contoh bidang tersebut.",
+    )
+    cfg["auto_apply_domain_example"] = auto_apply
+
+    domain_changed = selected_domain != p.get("domain", "Peternakan")
+    framework_changed = selected_framework != p.get("framework", "PICOS")
+    if domain_changed or framework_changed:
+        if auto_apply and selected_domain != "Otomatis":
+            applied = apply_domain_framework_autofill(selected_domain, selected_framework, source="auto-isi contoh karena bidang/kerangka berubah")
+            st.success(f"Bidang/kerangka berubah. Contoh untuk {selected_domain} - {selected_framework} sudah diterapkan: {applied.get('title','')}")
+            st.rerun()
+        else:
+            p["domain"] = selected_domain
+            p["framework"] = selected_framework
+            sync_downstream_from_project(reason="bidang/kerangka berubah tanpa auto-isi")
+            st.info("Bidang/kerangka sudah berubah. Klik tombol terapkan contoh di bawah jika ingin mengisi komponen review dari contoh bidang tersebut.")
+            st.rerun()
+
+    render_current_domain_example_preview(p.get("domain", "Peternakan"), p.get("framework", "PICOS"))
+    c_apply, c_note = st.columns([1, 2])
+    if c_apply.button("Terapkan contoh bidang ini sekarang", use_container_width=True):
+        applied = apply_domain_framework_autofill(p.get("domain", "Peternakan"), p.get("framework", "PICOS"), source="tombol terapkan contoh bidang")
+        st.success(f"Contoh diterapkan: {applied.get('title','')}")
+        st.rerun()
+    c_note.caption("Gunakan tombol ini bila ingin mengembalikan komponen review ke contoh bawaan bidang setelah mengedit manual.")
+
+    st.subheader("B. Sesuaikan judul dan komponen review")
+    c1, c2 = st.columns(2)
+    p["title"] = st.text_area("Judul sementara", value=p.get("title", ""), height=90)
+    p["population"] = c1.text_input("Population / Problem", value=p.get("population", ""))
+    p["intervention"] = c2.text_input("Intervention / Exposure", value=p.get("intervention", ""))
+    p["comparator"] = c1.text_input("Comparator", value=p.get("comparator", ""))
+    p["outcome"] = c2.text_input("Outcome", value=p.get("outcome", ""))
+    p["study_design"] = c1.text_input("Study design", value=p.get("study_design", ""))
+    p["year_range"] = c2.text_input("Rentang tahun", value=p.get("year_range", "2015-2026"))
+    p["language"] = c1.text_input("Bahasa artikel", value=p.get("language", "English and Bahasa Indonesia"))
+    review_types = ["Systematic Review", "Systematic Review and Meta-Analysis", "Systematic Map", "Scoping Review"]
+    p["review_type"] = c2.selectbox(
+        "Jenis review",
+        review_types,
+        index=review_types.index(p.get("review_type", "Systematic Review and Meta-Analysis")) if p.get("review_type", "Systematic Review and Meta-Analysis") in review_types else 1,
+    )
+
+    b1, b2 = st.columns(2)
+    if b1.button("Simpan perubahan manual dan sinkronkan", use_container_width=True):
         st.session_state.project = p
-        sync_downstream_from_project(reason="judul/PICOS disimpan")
-        st.success("Data proyek disimpan. Protocol, Search Strategy, Screening Score, PRISMA, Quality, Data Extraction, Insight, dan Export sudah menyesuaikan.")
+        sync_downstream_from_project(reason="perubahan manual Langkah 1")
+        st.success("Perubahan manual disimpan. Protocol, Search Strategy, Screening Score, PRISMA, Quality, Data Extraction, Insight, dan Export sudah menyesuaikan.")
+    if b2.button("Buat ulang RQ, kriteria, dan search terms dari isian saat ini", use_container_width=True):
+        st.session_state.project = p
+        st.session_state.project["research_question"] = make_auto_research_question(st.session_state.project)
+        st.session_state.criteria = make_auto_criteria(st.session_state.project)
+        st.session_state.terms = suggest_terms_from_project(st.session_state.project)
+        sync_downstream_from_project(reason="generate ulang dari isian manual")
+        st.success("Research question, kriteria, dan search terms dibuat ulang berdasarkan isian saat ini.")
+        st.rerun()
 
     result = analyze_title(st.session_state.project)
     st.subheader("Hasil Analisis Kelayakan")
@@ -2457,10 +2580,10 @@ def page_title_protocol():
         st.markdown(f"**RQ {i}:** {rq}")
     if st.button("Gunakan Research Question pertama", use_container_width=True):
         st.session_state.project["research_question"] = result["research_questions"][0]
-        st.success("Research question diterapkan.")
+        sync_downstream_from_project(reason="RQ pertama diterapkan")
+        st.success("Research question diterapkan dan menu berikutnya disinkronkan.")
 
     render_framework_domain_guidance(st.session_state.project)
-
 
 def page_protocol_search():
     st.header("2. Protocol dan Search Strategy")
