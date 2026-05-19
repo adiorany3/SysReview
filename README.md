@@ -1,79 +1,77 @@
-# Agro Systematic Review Builder
+# Integrated Agro Systematic Review Builder
 
-Aplikasi Streamlit untuk membantu penyusunan **systematic review** bidang agro, peternakan, pangan, agronomi, perikanan, dan lingkungan.
+Aplikasi Streamlit untuk membantu peneliti menyusun systematic review bidang agro, peternakan, agronomi, pangan, perikanan, dan lingkungan secara terpadu.
 
-## Fitur
+## Perubahan versi terintegrasi
 
-- Protocol & PICOS/PECO
-- Boolean search string builder
-- Import artikel dari CSV, Excel, atau RIS
-- Screening judul/abstrak dan full-text
-- Deteksi duplikasi berdasarkan DOI dan judul
-- PRISMA flow summary
-- Quality assessment checklist
-- Data extraction table
-- Descriptive synthesis chart
-- Export CSV, protocol, methods template, dan project config
+Versi ini sudah dirapikan agar setiap bagian tidak berjalan sendiri-sendiri. Alur data dibuat terpadu dari awal sampai akhir:
 
-## Struktur Folder
+1. **Title & Protocol Analyzer**
+   - Menganalisis kelayakan judul.
+   - Membuat skor kesiapan Q-level.
+   - Membuat PICOS/PECO, research question, Boolean search, rekomendasi database, quality tool, dan draft protocol.
+   - Hasilnya otomatis mengisi modul protocol, search strategy, dan screening relevance.
 
-```text
-agro_sysreview_streamlit/
-├── app.py
-├── requirements.txt
-├── README.md
-├── .streamlit/
-│   └── config.toml
-└── data/
-    └── sample_articles.csv
-```
+2. **Protocol & PICOS**
+   - Menjadi pusat data review.
+   - Jika PICOS/PECO diubah, search terms dan scoring artikel dapat diperbarui otomatis.
 
-## Cara Menjalankan di Laptop
+3. **Search Strategy**
+   - Boolean search dibangun dari data protocol.
+   - Search terms yang disimpan akan menghitung ulang relevansi artikel yang sudah diimpor.
+   - Database final akan masuk ke protocol dan draft methods.
 
-1. Buka terminal pada folder project.
-2. Install dependency:
+4. **Import & Screening**
+   - File CSV/XLSX/RIS otomatis dinormalisasi.
+   - Sistem mendeteksi duplikasi.
+   - Artikel diberi PICOS relevance score.
+   - Keputusan screening dapat dibantu dengan saran otomatis.
+
+5. **PRISMA Flow**
+   - Jumlah PRISMA otomatis ditarik dari hasil screening.
+   - Mode manual tetap tersedia bila peneliti memiliki data dari sumber tambahan.
+
+6. **Quality Assessment**
+   - Hanya menampilkan artikel yang sudah masuk kategori Include.
+   - Terhubung dengan hasil screening/full-text.
+
+7. **Data Extraction**
+   - Hanya menampilkan artikel Include.
+   - Data awal seperti judul, komoditas/spesies, intervensi, pembanding, dan outcome ditarik dari tabel screening.
+
+8. **Synthesis & Export**
+   - Menarik semua data dari protocol, PRISMA, screening, quality assessment, dan data extraction.
+   - Dapat mengekspor protocol, methods template, synthesis summary, CSV, JSON, dan paket ZIP output.
+
+## Cara menjalankan lokal
 
 ```bash
 pip install -r requirements.txt
-```
-
-3. Jalankan aplikasi:
-
-```bash
 streamlit run app.py
 ```
 
-4. Buka browser sesuai alamat yang muncul, biasanya:
+## Deploy online dengan Streamlit Community Cloud
+
+1. Upload folder ini ke GitHub.
+2. Buka Streamlit Community Cloud.
+3. Pilih repository.
+4. Main file: `app.py`.
+5. Deploy.
+
+## Format file bibliografi yang didukung
+
+- CSV
+- XLSX/XLS
+- RIS
+
+Kolom ideal untuk data artikel:
 
 ```text
-http://localhost:8501
+title, authors, year, journal, doi, abstract, country, study_design, species_or_crop, intervention, comparator, outcome, source_database
 ```
 
-## Cara Deploy Online ke Streamlit Community Cloud
+Kolom lain tetap dapat diimpor, tetapi sistem akan mencoba menyesuaikan nama kolom utama secara otomatis.
 
-1. Buat repository GitHub baru.
-2. Upload semua file dalam folder ini ke repository tersebut.
-3. Buka Streamlit Community Cloud.
-4. Pilih **New app**.
-5. Hubungkan repository GitHub.
-6. Isi main file path:
+## Catatan penggunaan
 
-```text
-app.py
-```
-
-7. Klik **Deploy**.
-
-## Format File Artikel yang Disarankan
-
-Gunakan CSV/XLSX dengan kolom berikut:
-
-```text
-id,title,authors,year,journal,doi,country,study_design,species_or_crop,intervention,comparator,outcome,abstract,source_database
-```
-
-Kolom tidak harus lengkap. Aplikasi akan membuat kolom yang belum ada secara otomatis.
-
-## Catatan Akademik
-
-Aplikasi ini membantu alur kerja systematic review, tetapi keputusan ilmiah tetap harus dilakukan oleh peneliti. Untuk naskah jurnal bereputasi, pastikan bagian metode menjelaskan database, tanggal pencarian, search string, kriteria inklusi-eksklusi, proses screening, quality assessment, dan metode sintesis secara transparan.
+Sistem ini membantu penyusunan systematic review agar lebih rapi dan sesuai alur PRISMA/PICOS/PECO, tetapi validasi ilmiah akhir tetap perlu dilakukan oleh peneliti. Sistem tidak menjamin artikel pasti diterima di jurnal Q-level, namun membantu menyiapkan struktur, transparansi metode, dan evidence synthesis yang lebih kuat.
