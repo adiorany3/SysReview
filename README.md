@@ -1,6 +1,6 @@
 # Agro Systematic Review Builder
 
-**Q-Level Manuscript Builder + Compliance Checker Edition**
+**Q-Level Manuscript Builder + Save & Resume Edition**
 
 Aplikasi Streamlit ini dirancang untuk membantu peneliti menyusun systematic review bidang agro, peternakan, perikanan/akuakultur, pangan, dan lingkungan secara lebih terarah menuju standar naskah jurnal bereputasi.
 
@@ -59,7 +59,14 @@ Aplikasi Streamlit ini dirancang untuk membantu peneliti menyusun systematic rev
 - Cover Letter Template.
 - Pre-Submission Reviewer Check.
 
-### 8. Insight dan Export
+### 8. Simpan dan Lanjutkan Project
+- Setiap langkah menyediakan tombol **Simpan progress** dalam format `.srproj.json`.
+- Sidebar menyediakan menu **Simpan & lanjutkan project**.
+- Peneliti dapat mengunduh `systematic_review_project_state.srproj.json`, menutup aplikasi, lalu mengunggah file tersebut di lain waktu untuk melanjutkan dari posisi terakhir.
+- File project menyimpan judul, PICOS/PECO, protocol, search terms, artikel screening, PRISMA, quality assessment, data extraction, catatan, dan konfigurasi auto-sync.
+- Saat memuat project lama, sistem meminta konfirmasi agar project aktif tidak terganti secara tidak sengaja.
+
+### 9. Insight dan Export
 - Evidence Insight Report otomatis.
 - Descriptive chart untuk tahun, negara, arah efek, dan kualitas.
 - Export ZIP berisi:
@@ -80,9 +87,10 @@ Aplikasi Streamlit ini dirancang untuk membantu peneliti menyusun systematic rev
   - `novelty_gap_analysis.xlsx`
   - `journal_targeting.xlsx`
   - `reviewer_check.xlsx`
-  - `project_state.json`
+  - `project_state.srproj.json`
+  - `project_state_README.txt`
 
-### 9. Safe Reset
+### 10. Safe Reset
 - Tombol hapus/reset data project.
 - Konfirmasi dua langkah: centang pernyataan dan ketik `RESET`.
 - Data tidak akan terhapus tanpa konfirmasi lengkap.
@@ -101,6 +109,19 @@ streamlit run app.py
 3. Pilih repository.
 4. Main file: `app.py`.
 5. Deploy.
+
+
+## Cara Menyimpan dan Melanjutkan Pekerjaan
+
+1. Setelah menyelesaikan langkah tertentu, klik tombol **Simpan progress Langkah ...** di halaman tersebut, atau gunakan sidebar **Simpan & lanjutkan project**.
+2. Unduh file `.srproj.json`. File ini adalah snapshot penuh project.
+3. Saat ingin melanjutkan, jalankan aplikasi lagi.
+4. Buka sidebar **Simpan & lanjutkan project**.
+5. Upload file `.srproj.json`.
+6. Centang konfirmasi bahwa project aktif akan diganti.
+7. Klik **Muat dan lanjutkan project**.
+
+Dengan cara ini, peneliti tidak perlu menyelesaikan systematic review dalam satu sesi. Proses dapat dihentikan pada tahap judul, protocol, screening, quality assessment, extraction, atau manuscript building, lalu dilanjutkan lagi dari file project yang sama.
 
 ## Format Import Artikel
 

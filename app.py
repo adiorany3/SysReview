@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 APP_TITLE = "Agro Systematic Review Builder"
-APP_VERSION = "Q-Level Manuscript Builder + Compliance Checker Edition"
+APP_VERSION = "Q-Level Manuscript Builder + Save & Resume Edition"
 
 ARTICLE_COLUMNS = [
     "id", "title", "authors", "year", "journal", "doi", "country", "study_design",
@@ -1661,6 +1661,111 @@ Sincerely,
 [Author Name]
 """
 
+
+def _json_safe_value(value):
+    """Convert values from pandas/numpy into JSON-safe Python values."""
+    if pd.isna(value):
+        return None
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        return float(value)
+    if isinstance(value, (pd.Timestamp, datetime, date)):
+        return value.isoformat()
+    return value
+
+
+def df_to_records_for_state(df: pd.DataFrame, columns: list) -> list:
+    """Serialize a DataFrame while preserving the expected column order."""
+    if df is None or df.empty:
+        return []
+    safe_df = df.copy()
+    for col in columns:
+        if col not in safe_df.columns:
+            safe_df[col] = ""
+    safe_df = safe_df[columns]
+    records = []
+    for row in safe_df.to_dict(orient="records"):
+        records.append({k: _json_safe_value(v) for k, v in row.items()})
+    return records
+
+
+def records_to_df_from_state(records, columns: list) -> pd.DataFrame:
+    """Restore a DataFrame from project-state records and normalize columns."""
+    if not records:
+        return pd.DataFrame(columns=columns)
+    df = pd.DataFrame(records)
+    for col in columns:
+        if col not in df.columns:
+            df[col] = ""
+    return df[columns].fillna("")
+
+
+def make_resume_project_state(current_page: str = "") -> dict:
+    """Create a complete resumable project snapshot."""
+    return {
+        "app": APP_TITLE,
+        "version": APP_VERSION,
+        "state_schema": "sr_project_v2",
+        "saved_at": datetime.now().isoformat(timespec="seconds"),
+        "current_page": current_page,
+        "project": st.session_state.project,
+        "criteria": st.session_state.criteria,
+        "terms": st.session_state.terms,
+        "articles": df_to_records_for_state(st.session_state.articles, ARTICLE_COLUMNS),
+        "quality": df_to_records_for_state(st.session_state.quality, QUALITY_COLUMNS),
+        "extraction": df_to_records_for_state(st.session_state.extraction, EXTRACTION_COLUMNS),
+        "prisma_manual": st.session_state.prisma_manual,
+        "notes": st.session_state.notes,
+        "sync_config": st.session_state.sync_config,
+        "completion": completion_status()[0],
+    }
+
+
+def resume_project_state_bytes(current_page: str = "") -> bytes:
+    return json.dumps(make_resume_project_state(current_page), ensure_ascii=False, indent=2).encode("utf-8")
+
+
+def load_resume_project_state(uploaded_file):
+    """Load a saved .srproj.json/.json project file into session state."""
+    try:
+        raw = uploaded_file.getvalue().decode("utf-8")
+        data = json.loads(raw)
+    except Exception as exc:
+        return False, f"File tidak dapat dibaca sebagai JSON project: {exc}"
+
+    required_any = ["project", "criteria", "terms"]
+    if not any(key in data for key in required_any):
+        return False, "File tidak dikenali sebagai project systematic review. Pastikan file berasal dari tombol Download Project State."
+
+    # Support older project_state.json exports that only stored project/criteria/terms.
+    st.session_state.project = data.get("project", st.session_state.project)
+    st.session_state.criteria = data.get("criteria", st.session_state.criteria)
+    st.session_state.terms = data.get("terms", st.session_state.terms)
+    st.session_state.prisma_manual = data.get("prisma_manual", st.session_state.prisma_manual)
+    st.session_state.notes = data.get("notes", st.session_state.notes)
+    st.session_state.sync_config = data.get("sync_config", st.session_state.sync_config)
+
+    st.session_state.articles = records_to_df_from_state(data.get("articles", []), ARTICLE_COLUMNS)
+    st.session_state.quality = records_to_df_from_state(data.get("quality", []), QUALITY_COLUMNS)
+    st.session_state.extraction = records_to_df_from_state(data.get("extraction", []), EXTRACTION_COLUMNS)
+
+    # Normalize derived columns and relationships after restore.
+    if not st.session_state.articles.empty:
+        st.session_state.articles = flag_duplicates(st.session_state.articles)
+        st.session_state.articles = update_dual_reviewer_consensus(st.session_state.articles)
+        st.session_state.articles = apply_relevance_scoring(st.session_state.articles)
+    sync_quality_extraction()
+    st.session_state.sync_config["last_sync"] = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (project dilanjutkan dari file)"
+    return True, "Project berhasil dimuat. Anda bisa melanjutkan dari langkah terakhir tanpa mulai dari awal."
+
+
+def make_step_snapshot(step_name: str) -> bytes:
+    """Create a smaller downloadable snapshot for the active step while still keeping the project resumable."""
+    state = make_resume_project_state(step_name)
+    state["step_snapshot"] = step_name
+    return json.dumps(state, ensure_ascii=False, indent=2).encode("utf-8")
+
 def make_export_zip():
     mem = BytesIO()
     with zipfile.ZipFile(mem, "w", zipfile.ZIP_DEFLATED) as z:
@@ -1682,13 +1787,8 @@ def make_export_zip():
         z.writestr("novelty_gap_analysis.xlsx", df_to_xlsx_bytes(novelty_gap_df(), "Novelty_Gap"))
         z.writestr("journal_targeting.xlsx", df_to_xlsx_bytes(journal_targeting_df(), "Journal_Targeting"))
         z.writestr("reviewer_check.xlsx", df_to_xlsx_bytes(reviewer_check_df(), "Reviewer_Check"))
-        z.writestr("project_state.json", json.dumps({
-            "project": st.session_state.project,
-            "criteria": st.session_state.criteria,
-            "terms": st.session_state.terms,
-            "sync_config": st.session_state.sync_config,
-            "notes": st.session_state.notes,
-        }, ensure_ascii=False, indent=2))
+        z.writestr("project_state.srproj.json", resume_project_state_bytes("Export ZIP"))
+        z.writestr("project_state_README.txt", "Gunakan file project_state.srproj.json pada menu sidebar 'Simpan & lanjutkan project' untuk melanjutkan pekerjaan tanpa mulai dari awal.")
     mem.seek(0)
     return mem.getvalue()
 
@@ -1739,6 +1839,32 @@ def render_sidebar():
         sync_downstream_from_project(reason="tombol sidebar")
         st.sidebar.success("Semua menu sudah mengikuti isi menu sebelumnya.")
 
+    with st.sidebar.expander("💾 Simpan & lanjutkan project", expanded=False):
+        st.caption("Unduh file project setelah menyelesaikan langkah apa pun. File ini dapat diunggah kembali untuk melanjutkan pekerjaan tanpa mulai dari awal.")
+        st.download_button(
+            "⬇️ Download Project State (.srproj.json)",
+            resume_project_state_bytes("Sidebar snapshot"),
+            "systematic_review_project_state.srproj.json",
+            "application/json",
+            use_container_width=True,
+        )
+        resume_upload = st.file_uploader(
+            "Upload project untuk dilanjutkan",
+            type=["json", "srproj"],
+            key="resume_project_upload",
+            help="Gunakan file .srproj.json yang sebelumnya diunduh dari aplikasi ini.",
+        )
+        if resume_upload is not None:
+            st.caption(f"File terpilih: {resume_upload.name}")
+            replace_confirm = st.checkbox("Saya paham project aktif akan diganti dengan isi file ini.", key="resume_replace_confirm")
+            if st.button("📂 Muat dan lanjutkan project", use_container_width=True, disabled=not replace_confirm):
+                ok, msg = load_resume_project_state(resume_upload)
+                if ok:
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+
     with st.sidebar.expander("⚠️ Hapus / reset data project"):
         st.warning("Reset akan menghapus judul, protocol, search terms, artikel, PRISMA, quality assessment, data extraction, catatan, dan konfigurasi sementara. Gunakan export terlebih dahulu jika data masih diperlukan.")
         confirm_checkbox = st.checkbox("Saya paham bahwa semua data project sementara akan dihapus.", key="reset_confirm_checkbox")
@@ -1758,6 +1884,13 @@ def page_workflow():
     st.caption(APP_VERSION)
     st.info("Gunakan halaman ini sebagai peta kerja. Setiap langkah menghasilkan output yang dipakai oleh langkah berikutnya. Mode auto-sync membuat menu berikutnya langsung menyesuaikan isi menu sebelumnya.")
     render_sync_status()
+    st.download_button(
+        "💾 Download snapshot langkah saat ini",
+        make_step_snapshot("Panduan Workflow"),
+        "step_00_workflow_snapshot.srproj.json",
+        "application/json",
+        use_container_width=True,
+    )
 
     steps = [
         ("1", "Judul & PICOS/PECO", "Masukkan judul, bidang, target jurnal, dan komponen PICOS/PECO.", "Output: skor kesiapan judul, kelemahan, rekomendasi judul, research question."),
@@ -1797,6 +1930,13 @@ def page_workflow():
 def page_title_protocol():
     st.header("1. Judul, PICOS/PECO, dan Kelayakan Naskah")
     render_sync_status()
+    st.download_button(
+        "💾 Simpan progress Langkah 1",
+        make_step_snapshot("Langkah 1 - Judul & PICOS/PECO"),
+        "step_01_title_picos_snapshot.srproj.json",
+        "application/json",
+        use_container_width=True,
+    )
     p = st.session_state.project.copy()
     with st.form("project_form"):
         p["title"] = st.text_area("Judul sementara", value=p.get("title", ""), height=80)
@@ -1854,6 +1994,7 @@ def page_protocol_search():
     st.header("2. Protocol dan Search Strategy")
     sync_if_auto(reason="membuka protocol & search")
     render_sync_status()
+    st.download_button("💾 Simpan progress Langkah 2", make_step_snapshot("Langkah 2 - Protocol & Search"), "step_02_protocol_search_snapshot.srproj.json", "application/json", use_container_width=True)
     p = st.session_state.project
     c = st.session_state.criteria
     if st.button("Ambil ulang otomatis dari Judul & PICOS/PECO", use_container_width=True):
@@ -1902,6 +2043,7 @@ def page_import_screening():
     st.header("3-4. Import Artikel dan Screening Terintegrasi")
     sync_if_auto(reason="membuka import & screening")
     render_sync_status()
+    st.download_button("💾 Simpan progress Langkah 3-4", make_step_snapshot("Langkah 3-4 - Import & Screening"), "step_03_04_import_screening_snapshot.srproj.json", "application/json", use_container_width=True)
     st.write("Unggah hasil ekspor dari database dalam format XLSX, XLS, atau RIS. Sistem akan menormalisasi kolom, mendeteksi duplikasi, dan memberi skor relevansi berdasarkan PICOS/PECO yang aktif dari menu sebelumnya.")
     st.info(f"Screening score saat ini memakai kerangka {st.session_state.project.get('framework', 'PICOS')} untuk: {st.session_state.project.get('population','')} | {st.session_state.project.get('intervention','')} | {st.session_state.project.get('outcome','')}")
     sample_path = "data/sample_articles.xlsx"
@@ -1974,6 +2116,7 @@ def page_prisma_quality():
     st.header("5-6. PRISMA dan Quality Assessment")
     sync_if_auto(reason="membuka PRISMA & quality")
     render_sync_status()
+    st.download_button("💾 Simpan progress Langkah 5-6", make_step_snapshot("Langkah 5-6 - PRISMA & Quality"), "step_05_06_prisma_quality_snapshot.srproj.json", "application/json", use_container_width=True)
     if st.session_state.articles.empty:
         st.warning("Import artikel terlebih dahulu.")
         return
@@ -2046,6 +2189,7 @@ def page_extraction():
     st.header("7. Data Extraction")
     sync_if_auto(reason="membuka data extraction")
     render_sync_status()
+    st.download_button("💾 Simpan progress Langkah 7", make_step_snapshot("Langkah 7 - Data Extraction"), "step_07_data_extraction_snapshot.srproj.json", "application/json", use_container_width=True)
     if st.session_state.articles.empty:
         st.warning("Import artikel terlebih dahulu.")
         return
@@ -2093,6 +2237,7 @@ def page_qlevel_tools():
     st.header("8. Q-Level Manuscript Tools")
     sync_if_auto(reason="membuka Q-level tools")
     render_sync_status()
+    st.download_button("💾 Simpan progress Langkah 8", make_step_snapshot("Langkah 8 - Q-Level Tools"), "step_08_qlevel_tools_snapshot.srproj.json", "application/json", use_container_width=True)
     st.write("Halaman ini mengecek kesiapan naskah sebelum dikembangkan untuk jurnal bereputasi. Semua indikator membaca data dari menu sebelumnya.")
 
     tabs = st.tabs([
@@ -2190,6 +2335,7 @@ def page_insight_export():
     st.header("9. Evidence Insight Report dan Export")
     sync_if_auto(reason="membuka insight & export")
     render_sync_status()
+    st.download_button("💾 Simpan progress Langkah 9", make_step_snapshot("Langkah 9 - Insight & Export"), "step_09_insight_export_snapshot.srproj.json", "application/json", use_container_width=True)
     st.write("Halaman ini membaca semua bagian sistem dan menyusun informasi/insight otomatis untuk membantu penulisan Results, Discussion, Limitations, dan Future Research.")
     if st.session_state.articles.empty:
         st.warning("Belum ada data artikel. Anda tetap bisa mengekspor protocol, tetapi insight bukti belum lengkap.")
@@ -2237,6 +2383,7 @@ def page_insight_export():
     c2.download_button("Download methods_template.md", make_methods_template().encode("utf-8"), "methods_template.md", "text/markdown", use_container_width=True)
     c3.download_button("Download insight_report.md", report.encode("utf-8"), "evidence_insight_report.md", "text/markdown", use_container_width=True)
     st.download_button("Download examples_and_guidance.md", make_guidance_markdown().encode("utf-8"), "examples_and_guidance.md", "text/markdown", use_container_width=True)
+    st.download_button("Download project_state.srproj.json untuk dilanjutkan nanti", resume_project_state_bytes("Insight & Export"), "project_state.srproj.json", "application/json", use_container_width=True)
     st.download_button("Download semua hasil sebagai ZIP", make_export_zip(), "systematic_review_export_package.zip", "application/zip", use_container_width=True)
 
 
