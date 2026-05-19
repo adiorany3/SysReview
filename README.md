@@ -1,126 +1,137 @@
 # Agro Systematic Review Builder
 
-Aplikasi Streamlit untuk membantu peneliti bidang agro, peternakan, pangan, agronomi, perikanan, akuakultur, dan lingkungan menyusun systematic review yang lebih rapi, terintegrasi, dan berbasis kaidah evidence synthesis.
+**Q-Level Manuscript Builder + Compliance Checker Edition**
 
-## Versi ini
+Aplikasi Streamlit ini dirancang untuk membantu peneliti menyusun systematic review bidang agro, peternakan, perikanan/akuakultur, pangan, dan lingkungan secara lebih terarah menuju standar naskah jurnal bereputasi.
 
-**Auto-Sync Integrated Workflow + Safe Reset Edition**
+## Fitur Utama
 
-Versi ini memperkuat integrasi antarmenu. Isi dari menu sebelumnya menjadi dasar otomatis untuk menu berikutnya. Ketika peneliti mengubah judul, bidang, kerangka PICO/PICOS/PECO, population, intervention/exposure, comparator, outcome, atau study design, sistem dapat langsung memperbarui Protocol, Search Strategy, Screening Score, PRISMA, Quality Assessment, Data Extraction, Evidence Insight Report, dan Export Package.
+### 1. Workflow Terpadu
+- Judul & PICOS/PECO menjadi sumber utama.
+- Protocol & Search Strategy otomatis mengikuti pilihan sebelumnya.
+- Screening otomatis memengaruhi PRISMA, Quality Assessment, Data Extraction, Insight, dan Export.
+- Tersedia auto-sync dan tombol sinkronisasi manual.
 
-## Integrasi otomatis antarmenu
+### 2. Title & Protocol Analyzer
+- Analisis kelayakan judul.
+- Skor kesiapan judul/protocol.
+- Deteksi kelemahan judul.
+- Rekomendasi judul yang lebih kuat.
+- Generator research question.
+- Generator PICOS, PICO, atau PECO.
+- Contoh dinamis sesuai bidang dan framework.
 
-Alur integrasi sistem:
+### 3. Protocol & Search Strategy
+- Inclusion criteria otomatis.
+- Exclusion criteria otomatis.
+- Search terms otomatis.
+- Boolean search strategy otomatis.
+- Rekomendasi database berdasarkan bidang.
 
-1. **Judul & PICOS/PECO** menjadi sumber utama proyek.
-2. Sistem otomatis membuat atau memperbarui **Research Question**.
-3. Sistem otomatis membentuk **Inclusion Criteria** dan **Exclusion Criteria**.
-4. Sistem otomatis menyusun **Search Terms** dan **Boolean Search String**.
-5. Search terms otomatis dipakai untuk menghitung **PICOS/PECO Relevance Score** pada artikel.
-6. Hasil screening otomatis mengubah angka **PRISMA**.
-7. Artikel yang masuk tahap include otomatis muncul di **Quality Assessment** dan **Data Extraction**.
-8. Quality Assessment dan Data Extraction otomatis dibaca oleh **Evidence Insight Report**.
-9. Semua hasil otomatis masuk ke **Export ZIP**.
+### 4. Import dan Screening Artikel
+- Mendukung XLSX, XLS, dan RIS.
+- Semua hasil tabel diekspor dalam format XLSX.
+- Deteksi duplikasi berdasarkan DOI dan judul.
+- Skor relevansi PICOS/PECO otomatis.
+- Dual reviewer screening: Reviewer 1, Reviewer 2, conflict, dan consensus.
 
-Di sidebar tersedia:
+### 5. PRISMA dan Quality Assessment
+- PRISMA flow count otomatis.
+- Quality assessment dasar.
+- Risk of Bias sederhana: selection, performance, detection, attrition, reporting, dan other bias.
+- Overall risk of bias otomatis.
+- Certainty of evidence/GRADE sederhana otomatis.
 
-- **Auto-sync antarmenu**: mengaktifkan sinkronisasi otomatis.
-- **Timpa isi otomatis**: memperbarui ulang research question, criteria, dan search terms dari menu sebelumnya. Matikan opsi ini apabila ingin mempertahankan edit manual.
-- **Sinkronkan semua modul**: tombol untuk menyamakan seluruh menu dengan data terbaru.
-- **Hapus / reset data project**: tombol aman untuk mengembalikan aplikasi ke kondisi awal. Tombol ini hanya aktif setelah pengguna mencentang konfirmasi dan mengetik kata `RESET`.
+### 6. Data Extraction
+- Ekstraksi karakteristik studi.
+- Outcome, effect direction, effect size, p-value.
+- Kolom meta-analysis: mean, SD, n intervensi/kontrol, outcome unit.
+- Key finding, limitation, implication, novelty note.
 
-## Fitur utama
+### 7. Q-Level Manuscript Tools
+- PRISMA 2020 Compliance Checker.
+- PRISMA-S Search Strategy Audit.
+- Risk of Bias & GRADE summary.
+- Meta-Analysis Readiness Checker.
+- Novelty & Gap Analyzer.
+- Journal Targeting Assistant.
+- Q-Level Manuscript Builder.
+- Cover Letter Template.
+- Pre-Submission Reviewer Check.
 
-1. **Judul & PICOS/PECO Analyzer**
-   - Analisis kelayakan judul otomatis.
-   - Skor kesiapan menuju target Q-level.
-   - Deteksi kelemahan judul.
-   - Rekomendasi judul dan research question.
-   - Contoh dinamis berdasarkan bidang dan framework.
+### 8. Insight dan Export
+- Evidence Insight Report otomatis.
+- Descriptive chart untuk tahun, negara, arah efek, dan kualitas.
+- Export ZIP berisi:
+  - `protocol_systematic_review.md`
+  - `methods_template.md`
+  - `evidence_insight_report.md`
+  - `q_level_manuscript_draft.md`
+  - `q_level_manuscript_draft.docx`
+  - `cover_letter_template.md`
+  - `cover_letter_template.docx`
+  - `screening_results.xlsx`
+  - `quality_assessment.xlsx`
+  - `data_extraction.xlsx`
+  - `prisma_counts.xlsx`
+  - `prisma_2020_compliance.xlsx`
+  - `prisma_s_search_audit.xlsx`
+  - `meta_analysis_readiness.xlsx`
+  - `novelty_gap_analysis.xlsx`
+  - `journal_targeting.xlsx`
+  - `reviewer_check.xlsx`
+  - `project_state.json`
 
-2. **Contoh dan Informasi Sesuai Pilihan**
-   - Penjelasan PICO, PICOS, dan PECO.
-   - Contoh topik untuk peternakan, agro/agronomi, perikanan/akuakultur, pangan, dan lingkungan.
-   - Contoh komponen Population, Intervention/Exposure, Comparator, Outcome, dan Study Design.
-   - Contoh Boolean search dan keyword.
-   - Insight kelemahan, kekuatan, serta catatan untuk target Q1/Q2, Q2/Q3, Scopus awal, dan Sinta/Kampus.
+### 9. Safe Reset
+- Tombol hapus/reset data project.
+- Konfirmasi dua langkah: centang pernyataan dan ketik `RESET`.
+- Data tidak akan terhapus tanpa konfirmasi lengkap.
 
-3. **Protocol & Search Strategy Terintegrasi**
-   - Research question mengikuti menu Judul & PICOS/PECO.
-   - Kriteria inklusi-eksklusi otomatis menyesuaikan framework, tahun, bahasa, scope, dan study design.
-   - Boolean search string otomatis mengikuti population, intervention/exposure, comparator, outcome, dan study design.
-   - Tersedia tombol untuk mengambil ulang isi otomatis dari menu sebelumnya.
-
-4. **Import & Screening**
-   - Mendukung XLSX, XLS, dan RIS.
-   - Normalisasi kolom otomatis.
-   - Deteksi duplikasi DOI/judul.
-   - Skor relevansi PICOS/PECO otomatis mengikuti Search Strategy aktif.
-   - Saran screening otomatis: Include, Maybe, Exclude.
-
-5. **PRISMA & Quality Assessment**
-   - Ringkasan PRISMA otomatis berdasarkan screening.
-   - Artikel include otomatis masuk ke tabel quality assessment.
-   - Checklist quality assessment.
-   - Kategori kualitas Low, Moderate, High.
-
-6. **Data Extraction**
-   - Artikel include otomatis masuk ke tabel data extraction.
-   - Ekstraksi outcome, effect direction, effect size, p-value, finding, limitation, dan implication.
-
-7. **Evidence Insight Report**
-   - Insight otomatis dari hasil judul, screening, PRISMA, quality assessment, dan data extraction.
-   - Kekuatan bukti sementara.
-   - Kesiapan meta-analysis.
-   - Gap riset otomatis.
-   - Rekomendasi tindak lanjut untuk naskah.
-
-8. **Export Package**
-   - Protocol markdown.
-   - Methods template.
-   - Insight report.
-   - Examples and guidance markdown.
-   - Screening XLSX.
-   - PRISMA counts XLSX.
-   - Quality assessment XLSX.
-   - Data extraction XLSX.
-   - Project state JSON.
-   - Semua hasil bisa diekspor sebagai ZIP dari aplikasi.
-
-9. **Safe Reset Data**
-   - Menghapus seluruh data project sementara.
-   - Mengembalikan judul, protocol, search terms, artikel, PRISMA, quality assessment, extraction, notes, dan konfigurasi ke tampilan awal.
-   - Dilengkapi konfirmasi dua langkah agar tidak terhapus secara tidak sengaja.
-   - Disarankan melakukan export ZIP terlebih dahulu sebelum reset jika data masih diperlukan.
-
-## Cara menjalankan lokal
+## Cara Menjalankan Lokal
 
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Cara deploy online di Streamlit Community Cloud
+## Deploy ke Streamlit Cloud
 
-1. Upload semua file ke repository GitHub.
+1. Upload semua file ke GitHub.
 2. Buka Streamlit Community Cloud.
 3. Pilih repository.
-4. Main file path: `app.py`.
+4. Main file: `app.py`.
 5. Deploy.
 
-## Workflow penggunaan
+## Format Import Artikel
 
-1. Buka **Panduan Workflow**.
-2. Aktifkan **Auto-sync antarmenu** di sidebar.
-3. Isi **Judul & PICOS/PECO**.
-4. Simpan dan analisis. Menu Protocol & Search akan otomatis menyesuaikan.
-5. Buka **Protocol & Search** untuk mengecek research question, inclusion-exclusion, dan Boolean search.
-6. Import artikel dari database memakai XLSX/XLS/RIS.
-7. Lakukan screening. PRISMA otomatis berubah.
-8. Isi quality assessment dan data extraction untuk artikel include.
-9. Buka Insight & Export untuk melihat laporan insight dan mengunduh seluruh hasil.
-10. Jika ingin memulai project baru, buka sidebar **Hapus / reset data project**, centang konfirmasi, ketik `RESET`, lalu tekan tombol hapus.
+Gunakan file XLSX/XLS dengan kolom yang disarankan:
 
-## Catatan penting
+- id
+- title
+- authors
+- year
+- journal
+- doi
+- country
+- study_design
+- species_or_crop
+- intervention
+- comparator
+- outcome
+- abstract
+- source_database
 
-Sistem ini membantu standardisasi proses systematic review, tetapi keputusan akademik akhir tetap harus divalidasi peneliti. Sistem tidak menjamin artikel otomatis diterima di jurnal Q1/Q2, tetapi membantu memperkuat kelayakan metodologi, transparansi pelaporan, dan struktur naskah.
+Sistem akan menambahkan kolom screening, reviewer, PRISMA, quality, risk of bias, GRADE, dan extraction secara otomatis.
+
+## Catatan Akademik
+
+Sistem ini membantu menyusun dan mengecek kelengkapan naskah systematic review, tetapi tidak menjamin artikel diterima di jurnal Q1/Q2. Peneliti tetap perlu melakukan validasi manual terhadap:
+
+- kesesuaian scope jurnal target;
+- kualitas artikel primer;
+- akurasi data extraction;
+- pemilihan alat risk of bias;
+- keputusan meta-analysis;
+- interpretasi hasil;
+- author guidelines jurnal target.
+

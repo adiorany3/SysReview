@@ -15,25 +15,29 @@ st.set_page_config(
 )
 
 APP_TITLE = "Agro Systematic Review Builder"
-APP_VERSION = "Auto-Sync Integrated Workflow + Safe Reset Edition"
+APP_VERSION = "Q-Level Manuscript Builder + Compliance Checker Edition"
 
 ARTICLE_COLUMNS = [
     "id", "title", "authors", "year", "journal", "doi", "country", "study_design",
     "species_or_crop", "intervention", "comparator", "outcome", "abstract", "source_database",
-    "duplicate", "picos_relevance_score", "auto_screening_suggestion", "screening_decision",
-    "exclusion_reason", "full_text_decision", "full_text_exclusion_reason", "notes"
+    "duplicate", "picos_relevance_score", "auto_screening_suggestion",
+    "reviewer1_decision", "reviewer2_decision", "screening_conflict", "consensus_decision",
+    "screening_decision", "exclusion_reason", "full_text_decision", "full_text_exclusion_reason", "notes"
 ]
 
 QUALITY_COLUMNS = [
     "id", "title", "clear_objective", "appropriate_design", "adequate_sample",
     "clear_intervention", "valid_outcome", "adequate_statistics", "bias_control",
-    "complete_reporting", "quality_score", "quality_category", "risk_of_bias_note"
+    "complete_reporting", "selection_bias", "performance_bias", "detection_bias",
+    "attrition_bias", "reporting_bias", "other_bias", "quality_score", "quality_category",
+    "overall_risk_of_bias", "grade_downgrade_reason", "certainty_of_evidence", "risk_of_bias_note"
 ]
 
 EXTRACTION_COLUMNS = [
     "id", "title", "species_or_crop", "intervention", "comparator", "sample_size",
-    "duration", "main_outcome", "effect_direction", "effect_size", "p_value",
-    "key_finding", "limitations", "implication"
+    "duration", "main_outcome", "outcome_unit", "mean_intervention", "sd_intervention",
+    "n_intervention", "mean_control", "sd_control", "n_control", "effect_direction",
+    "effect_size", "p_value", "key_finding", "limitations", "implication", "novelty_note"
 ]
 
 DOMAIN_PROFILES = {
@@ -909,8 +913,10 @@ def normalize_columns(df: pd.DataFrame):
                 df[col] = False
             elif col in ["picos_relevance_score"]:
                 df[col] = 0
-            elif col in ["auto_screening_suggestion", "screening_decision", "full_text_decision"]:
+            elif col in ["auto_screening_suggestion", "screening_decision", "full_text_decision", "reviewer1_decision", "reviewer2_decision", "consensus_decision"]:
                 df[col] = "Belum dinilai"
+            elif col == "screening_conflict":
+                df[col] = False
             else:
                 df[col] = ""
     if df["id"].astype(str).str.strip().eq("").all():
@@ -1002,6 +1008,47 @@ def apply_relevance_scoring(df: pd.DataFrame):
         else:
             suggestions.append("Exclude - Relevansi rendah")
     df["auto_screening_suggestion"] = suggestions
+    for col in ["reviewer1_decision", "reviewer2_decision", "consensus_decision"]:
+        if col not in df.columns:
+            df[col] = "Belum dinilai"
+        df[col] = df[col].fillna("Belum dinilai").replace("", "Belum dinilai")
+    df = update_dual_reviewer_consensus(df)
+    return df
+
+
+def update_dual_reviewer_consensus(df: pd.DataFrame):
+    """Calculate screening conflict and consensus without overwriting completed manual decisions."""
+    if df.empty:
+        return df
+    df = df.copy()
+    for col in ["reviewer1_decision", "reviewer2_decision", "consensus_decision", "screening_decision"]:
+        if col not in df.columns:
+            df[col] = "Belum dinilai"
+        df[col] = df[col].fillna("Belum dinilai").replace("", "Belum dinilai")
+    conflicts, consensus = [], []
+    for _, row in df.iterrows():
+        r1 = str(row.get("reviewer1_decision", "Belum dinilai"))
+        r2 = str(row.get("reviewer2_decision", "Belum dinilai"))
+        if r1 != "Belum dinilai" and r2 != "Belum dinilai" and r1 != r2:
+            conflicts.append(True)
+            consensus.append("Perlu diskusi")
+        elif r1 != "Belum dinilai" and r2 != "Belum dinilai" and r1 == r2:
+            conflicts.append(False)
+            consensus.append(r1)
+        elif r1 != "Belum dinilai":
+            conflicts.append(False)
+            consensus.append(r1)
+        elif r2 != "Belum dinilai":
+            conflicts.append(False)
+            consensus.append(r2)
+        else:
+            conflicts.append(False)
+            consensus.append(row.get("screening_decision", "Belum dinilai"))
+    df["screening_conflict"] = conflicts
+    df["consensus_decision"] = consensus
+    # Bila belum ada keputusan utama, gunakan konsensus reviewer sebagai keputusan screening.
+    mask = df["screening_decision"].isin(["", "Belum dinilai"]) & ~df["consensus_decision"].isin(["", "Belum dinilai", "Perlu diskusi"])
+    df.loc[mask, "screening_decision"] = df.loc[mask, "consensus_decision"]
     return df
 
 
@@ -1039,7 +1086,9 @@ def sync_quality_extraction():
             newq = {c: "" for c in QUALITY_COLUMNS}
             for c in ["clear_objective", "appropriate_design", "adequate_sample", "clear_intervention", "valid_outcome", "adequate_statistics", "bias_control", "complete_reporting"]:
                 newq[c] = False
-            newq.update({"id": aid, "title": row.get("title", ""), "quality_score": 0, "quality_category": "Belum dinilai"})
+            for c in ["selection_bias", "performance_bias", "detection_bias", "attrition_bias", "reporting_bias", "other_bias"]:
+                newq[c] = "Unclear"
+            newq.update({"id": aid, "title": row.get("title", ""), "quality_score": 0, "quality_category": "Belum dinilai", "overall_risk_of_bias": "Unclear", "certainty_of_evidence": "Not assessed"})
             q = pd.concat([q, pd.DataFrame([newq])], ignore_index=True)
         if aid and (e.empty or aid not in e["id"].astype(str).values):
             newe = {c: "" for c in EXTRACTION_COLUMNS}
@@ -1066,8 +1115,46 @@ def calculate_quality(df: pd.DataFrame):
     bool_cols = ["clear_objective", "appropriate_design", "adequate_sample", "clear_intervention", "valid_outcome", "adequate_statistics", "bias_control", "complete_reporting"]
     for c in bool_cols:
         df[c] = df.get(c, False).fillna(False).astype(bool)
+    for c in ["selection_bias", "performance_bias", "detection_bias", "attrition_bias", "reporting_bias", "other_bias"]:
+        if c not in df.columns:
+            df[c] = "Unclear"
+        df[c] = df[c].fillna("Unclear").replace("", "Unclear")
     df["quality_score"] = df[bool_cols].sum(axis=1)
     df["quality_category"] = pd.cut(df["quality_score"], bins=[-1, 3, 5, 8], labels=["Low", "Moderate", "High"]).astype(str)
+    rob_cols = ["selection_bias", "performance_bias", "detection_bias", "attrition_bias", "reporting_bias", "other_bias"]
+    overall = []
+    for _, row in df.iterrows():
+        vals = [str(row.get(c, "Unclear")) for c in rob_cols]
+        if any(v == "High" for v in vals):
+            overall.append("High")
+        elif vals.count("Unclear") >= 3:
+            overall.append("Unclear")
+        else:
+            overall.append("Low")
+    df["overall_risk_of_bias"] = overall
+    certainty = []
+    reasons = []
+    for _, row in df.iterrows():
+        score = int(row.get("quality_score", 0))
+        rob = row.get("overall_risk_of_bias", "Unclear")
+        if score >= 7 and rob == "Low":
+            certainty.append("High")
+            reasons.append("Kualitas metodologi tinggi dan risiko bias rendah.")
+        elif score >= 5 and rob in ["Low", "Unclear"]:
+            certainty.append("Moderate")
+            reasons.append("Ada keterbatasan kecil pada metode atau risiko bias belum sepenuhnya jelas.")
+        elif score >= 3:
+            certainty.append("Low")
+            reasons.append("Beberapa domain quality/risk of bias perlu diperbaiki atau dilaporkan lebih jelas.")
+        else:
+            certainty.append("Very Low")
+            reasons.append("Kualitas pelaporan rendah atau risiko bias tinggi/tidak jelas.")
+    df["certainty_of_evidence"] = certainty
+    if "grade_downgrade_reason" not in df.columns:
+        df["grade_downgrade_reason"] = reasons
+    else:
+        blank = df["grade_downgrade_reason"].astype(str).str.strip().eq("")
+        df.loc[blank, "grade_downgrade_reason"] = pd.Series(reasons, index=df.index)[blank]
     return df
 
 
@@ -1302,6 +1389,278 @@ Quality assessment was conducted using a structured checklist covering clarity o
 """
 
 
+
+
+def prisma_compliance_df():
+    """Simplified PRISMA 2020 readiness checklist for pre-submission checking."""
+    p, c, terms = st.session_state.project, st.session_state.criteria, st.session_state.terms
+    a, q, e = st.session_state.articles, st.session_state.quality, st.session_state.extraction
+    counts = get_prisma_counts(True)
+    title_result = analyze_title(p)
+    checks = [
+        ("Title", "Judul menyebut systematic review/meta-analysis", "Lengkap" if re.search(r"systematic review|meta-analysis|meta analysis|systematic map|scoping review", p.get("title", ""), re.I) else "Perlu revisi", "Tambahkan jenis review pada judul."),
+        ("Abstract", "Abstract memuat tujuan, database, jumlah studi, hasil utama", "Perlu disusun", "Gunakan Manuscript Builder untuk draft awal."),
+        ("Rationale", "Latar belakang menjelaskan alasan review dibutuhkan", "Perlu disusun", "Hubungkan gap bukti dengan kebutuhan review."),
+        ("Objectives", "Pertanyaan penelitian eksplisit", "Lengkap" if p.get("research_question") else "Belum lengkap", "Buat research question dari PICOS/PECO."),
+        ("Eligibility", "Kriteria inklusi dan eksklusi jelas", "Lengkap" if c.get("inclusion") and c.get("exclusion") else "Belum lengkap", "Lengkapi populasi, intervensi/eksposur, outcome, desain studi, tahun, bahasa."),
+        ("Information sources", "Database/sumber informasi disebutkan", "Lengkap" if title_result.get("recommended_databases") else "Perlu revisi", "Sebutkan database yang digunakan dan tanggal pencarian."),
+        ("Search strategy", "Search string bisa direplikasi", "Lengkap" if build_search_string(terms).strip() else "Belum lengkap", "Tampilkan Boolean string per database."),
+        ("Selection process", "Proses screening title/abstract dan full-text dijelaskan", "Lengkap" if not a.empty and (a["screening_decision"] != "Belum dinilai").any() else "Belum lengkap", "Gunakan dual reviewer dan catat alasan eksklusi."),
+        ("Data collection", "Form data extraction disiapkan", "Lengkap" if not e.empty else "Belum lengkap", "Ekstrak desain, sampel, outcome, effect direction, effect size."),
+        ("Data items", "Outcome utama dan variabel penting ditentukan", "Lengkap" if p.get("outcome") else "Belum lengkap", "Outcome harus terukur dan konsisten."),
+        ("Risk of bias", "Risk of bias/quality assessment dilakukan", "Lengkap" if not q.empty and q.get("overall_risk_of_bias", pd.Series(dtype=str)).replace("", np.nan).notna().any() else "Belum lengkap", "Gunakan SYRCLE/JBI/ROSES/ROBINS-I sesuai desain."),
+        ("Effect measures", "Effect size/ukuran efek dicatat", "Lengkap" if not e.empty and pd.to_numeric(e.get("effect_size", pd.Series(dtype=str)), errors="coerce").notna().sum() >= 3 else "Perlu revisi", "Isi mean, SD, n, p-value, atau effect size."),
+        ("Synthesis methods", "Metode sintesis dijelaskan", "Perlu disusun", "Jelaskan narrative synthesis atau meta-analysis bila data siap."),
+        ("Reporting bias", "Potensi publication/reporting bias dipertimbangkan", "Perlu revisi", "Tambahkan rencana funnel plot/sensitivity atau pembahasan keterbatasan."),
+        ("Certainty", "Certainty of evidence dinilai", "Lengkap" if not q.empty and q.get("certainty_of_evidence", pd.Series(dtype=str)).replace("Not assessed", np.nan).notna().any() else "Belum lengkap", "Gunakan GRADE sederhana/teradaptasi."),
+        ("Study selection", "PRISMA flow memiliki angka lengkap", "Lengkap" if counts["records_screened"] > 0 else "Belum lengkap", "Import artikel dan isi keputusan screening."),
+        ("Study characteristics", "Karakteristik studi disajikan", "Lengkap" if not e.empty else "Belum lengkap", "Gunakan tabel extraction."),
+        ("Risk of bias results", "Hasil risk of bias dilaporkan", "Lengkap" if not q.empty else "Belum lengkap", "Sajikan tabel risk of bias."),
+        ("Individual results", "Hasil per studi tersedia", "Lengkap" if not e.empty and e.get("key_finding", pd.Series(dtype=str)).astype(str).str.strip().ne("").any() else "Belum lengkap", "Isi key finding per studi."),
+        ("Synthesis results", "Sintesis lintas studi tersedia", "Lengkap" if not e.empty and e.get("effect_direction", pd.Series(dtype=str)).replace("", np.nan).notna().any() else "Belum lengkap", "Ringkas arah efek dan heterogenitas."),
+        ("Discussion", "Diskusi mengaitkan temuan, bias, dan gap", "Perlu disusun", "Gunakan Insight Report dan Novelty-Gap Analyzer."),
+        ("Limitations", "Keterbatasan review ditulis", "Lengkap" if not e.empty and e.get("limitations", pd.Series(dtype=str)).astype(str).str.strip().ne("").any() else "Perlu revisi", "Tambahkan batasan database, bahasa, desain, data outcome."),
+        ("Conclusion", "Kesimpulan tidak berlebihan", "Perlu disusun", "Sesuaikan klaim dengan kekuatan bukti."),
+        ("Registration", "Protocol/registration disebutkan", "Perlu revisi", "Sebutkan OSF/PROSPERO/ROSES/CEE bila digunakan, atau jelaskan tidak diregistrasi."),
+        ("Support", "Pendanaan/konflik kepentingan disiapkan", "Perlu disusun", "Tambahkan funding dan conflict of interest."),
+        ("Data availability", "Data screening/extraction tersedia", "Lengkap" if not a.empty else "Belum lengkap", "Lampirkan XLSX/OSF/GitHub sesuai kebijakan jurnal."),
+        ("Protocol deviations", "Perubahan dari protocol dicatat", "Perlu disusun", "Catat perubahan kriteria/search setelah screening."),
+    ]
+    return pd.DataFrame(checks, columns=["prisma_item", "requirement", "status", "recommendation"])
+
+
+def prisma_s_audit_df():
+    p, terms = st.session_state.project, st.session_state.terms
+    search = build_search_string(terms)
+    dbs = analyze_title(p).get("recommended_databases", [])
+    checks = [
+        ("Database selected", bool(dbs), "; ".join(dbs[:6]), "Pilih database aktual yang digunakan dan catat tanggal pencarian."),
+        ("Full search string", bool(search.strip()), search[:250] + ("..." if len(search) > 250 else ""), "Tampilkan search string lengkap per database."),
+        ("Population terms", bool(terms.get("population_terms", "").strip()), terms.get("population_terms", ""), "Tambahkan sinonim spesies/komoditas."),
+        ("Intervention/exposure terms", bool(terms.get("intervention_terms", "").strip()), terms.get("intervention_terms", ""), "Tambahkan sinonim perlakuan/paparan."),
+        ("Comparator terms", bool(terms.get("comparator_terms", "").strip()), terms.get("comparator_terms", ""), "Comparator dapat dipakai sebagai pencarian atau kriteria screening."),
+        ("Outcome terms", bool(terms.get("outcome_terms", "").strip()), terms.get("outcome_terms", ""), "Outcome harus terukur."),
+        ("Study design terms", bool(terms.get("study_terms", "").strip()), terms.get("study_terms", ""), "Tambahkan field trial, feeding trial, randomized, observational, dll."),
+        ("Boolean operators", "AND" in search and "OR" in search, "AND/OR detected" if "AND" in search or "OR" in search else "Missing", "Gunakan OR untuk sinonim dan AND antar konsep."),
+        ("Date range", bool(p.get("year_range", "").strip()), p.get("year_range", ""), "Sebutkan alasan rentang tahun."),
+        ("Language", bool(p.get("language", "").strip()), p.get("language", ""), "Jelaskan filter bahasa jika digunakan."),
+        ("Grey literature decision", False, "Belum diatur", "Putuskan apakah grey literature dimasukkan atau dikecualikan."),
+        ("Deduplication method", True, "DOI + normalized title", "Jelaskan metode deduplikasi."),
+        ("Search date", bool(p.get("search_date", "").strip()), p.get("search_date", "Belum diisi"), "Isi tanggal pencarian terakhir."),
+        ("Limits/filters", bool(p.get("year_range") or p.get("language")), f"Year: {p.get('year_range','')}; Language: {p.get('language','')}", "Dokumentasikan semua filter database."),
+        ("Supplementary search", False, "Belum diatur", "Tambahkan backward/forward citation tracking bila perlu."),
+        ("Export documentation", not st.session_state.articles.empty, f"{len(st.session_state.articles)} records imported", "Simpan file ekspor database sebagai lampiran/OSF."),
+    ]
+    rows = []
+    for item, ok, evidence, rec in checks:
+        rows.append({"audit_item": item, "status": "Lengkap" if ok else "Perlu revisi", "evidence": evidence, "recommendation": rec})
+    return pd.DataFrame(rows)
+
+
+def meta_analysis_readiness():
+    e = st.session_state.extraction
+    counts = get_prisma_counts(True)
+    total = counts["studies_included"]
+    if e.empty:
+        return {"score": 0, "status": "Belum siap", "reasons": ["Belum ada data extraction."], "table": pd.DataFrame()}
+    num_cols = ["mean_intervention", "sd_intervention", "n_intervention", "mean_control", "sd_control", "n_control"]
+    for c in num_cols:
+        if c not in e.columns:
+            e[c] = ""
+    complete_numeric = e[num_cols].apply(lambda col: pd.to_numeric(col, errors="coerce").notna()).all(axis=1).sum()
+    effect_numeric = pd.to_numeric(e.get("effect_size", pd.Series(dtype=str)), errors="coerce").notna().sum()
+    outcome_filled = e.get("main_outcome", pd.Series(dtype=str)).astype(str).str.strip().ne("").sum()
+    comparator_filled = e.get("comparator", pd.Series(dtype=str)).astype(str).str.strip().ne("").sum()
+    units = e.get("outcome_unit", pd.Series(dtype=str)).replace("", np.nan).dropna().nunique()
+    score = 0
+    score += min(25, int(25 * total / 10))
+    score += min(25, int(25 * complete_numeric / max(1, total)))
+    score += min(20, int(20 * effect_numeric / max(1, total)))
+    score += min(15, int(15 * outcome_filled / max(1, total)))
+    score += min(10, int(10 * comparator_filled / max(1, total)))
+    score += 5 if units <= 2 and units > 0 else 0
+    reasons = []
+    if total < 5:
+        reasons.append("Jumlah studi include kurang dari 5, sehingga meta-analysis masih lemah.")
+    if complete_numeric < max(3, total * 0.5):
+        reasons.append("Data mean, SD, dan n untuk kelompok intervensi/kontrol belum cukup.")
+    if effect_numeric < 3:
+        reasons.append("Effect size numerik masih minim.")
+    if units > 2:
+        reasons.append("Satuan outcome beragam; perlu standardisasi atau subgroup analysis.")
+    if not reasons:
+        reasons.append("Data awal cukup menjanjikan untuk meta-analysis. Lanjutkan pemeriksaan heterogenitas dan model efek.")
+    status = "Siap awal" if score >= 75 else "Cukup potensial" if score >= 55 else "Belum siap"
+    table = pd.DataFrame([{
+        "included_studies": total,
+        "complete_mean_sd_n_rows": int(complete_numeric),
+        "numeric_effect_size_rows": int(effect_numeric),
+        "outcome_filled_rows": int(outcome_filled),
+        "comparator_filled_rows": int(comparator_filled),
+        "unique_outcome_units": int(units),
+        "meta_readiness_score": int(score),
+        "status": status,
+    }])
+    return {"score": int(score), "status": status, "reasons": reasons, "table": table}
+
+
+def novelty_gap_df():
+    gaps = generate_gaps()
+    p = st.session_state.project
+    e = st.session_state.extraction
+    rows = []
+    for gap in gaps:
+        rows.append({"gap_type": "Evidence/Method Gap", "gap_or_insight": gap, "how_to_use_in_manuscript": "Gunakan pada Introduction sebagai novelty atau Discussion sebagai limitation/future research."})
+    if not e.empty:
+        outcomes = e.get("main_outcome", pd.Series(dtype=str)).replace("", np.nan).dropna().value_counts()
+        interventions = e.get("intervention", pd.Series(dtype=str)).replace("", np.nan).dropna().value_counts()
+        if len(outcomes) > 0:
+            rows.append({"gap_type": "Outcome Pattern", "gap_or_insight": f"Outcome dominan adalah {outcomes.index[0]}; outcome lain masih jarang muncul.", "how_to_use_in_manuscript": "Jelaskan dominasi outcome dan rekomendasikan standardisasi outcome."})
+        if len(interventions) > 0:
+            rows.append({"gap_type": "Intervention Pattern", "gap_or_insight": f"Intervensi paling sering adalah {interventions.index[0]}; variasi dosis/durasi perlu dibahas.", "how_to_use_in_manuscript": "Gunakan sebagai dasar subgroup/sensitivity atau arah riset masa depan."})
+    rows.append({"gap_type": "Novelty Statement Draft", "gap_or_insight": f"Review ini berkontribusi dengan memetakan bukti terkait {p.get('intervention','intervention/exposure')} terhadap {p.get('outcome','main outcome')} pada {p.get('population','target population')}, sekaligus menilai kualitas bukti dan kesiapan meta-analysis.", "how_to_use_in_manuscript": "Masukkan ke akhir Introduction sebagai kontribusi utama."})
+    return pd.DataFrame(rows)
+
+
+def journal_targeting_df():
+    p = st.session_state.project
+    target = p.get("target_level", "Q1/Q2")
+    title_score = analyze_title(p)["score"]
+    evidence = infer_evidence_strength()
+    prisma_ok = (prisma_compliance_df()["status"] == "Lengkap").mean()
+    search_ok = (prisma_s_audit_df()["status"] == "Lengkap").mean()
+    meta = meta_analysis_readiness()["score"]
+    rows = []
+    risk = "Sedang"
+    if target == "Q1/Q2" and (title_score < 80 or prisma_ok < 0.65 or evidence["strength"] in ["Terbatas", "Belum dapat dinilai"]):
+        risk = "Tinggi"
+    elif title_score >= 80 and prisma_ok >= 0.7 and search_ok >= 0.65:
+        risk = "Rendah-Sedang"
+    rows.append({"aspect": "Scope fit", "score_or_status": "Perlu cek manual", "insight": "Cocokkan domain, outcome, dan jenis artikel dengan Aims & Scope jurnal target.", "recommendation": "Pilih jurnal agro/peternakan yang rutin menerbitkan systematic review/meta-analysis."})
+    rows.append({"aspect": "Methodological readiness", "score_or_status": f"{prisma_ok*100:.0f}% PRISMA ready", "insight": "Kesiapan metode ditentukan oleh PRISMA, PRISMA-S, risk of bias, dan extraction.", "recommendation": "Lengkapi item PRISMA yang masih Perlu revisi."})
+    rows.append({"aspect": "Search transparency", "score_or_status": f"{search_ok*100:.0f}% PRISMA-S ready", "insight": "Search strategy harus bisa direplikasi.", "recommendation": "Simpan search string per database dan tanggal pencarian."})
+    rows.append({"aspect": "Evidence strength", "score_or_status": evidence["strength"], "insight": f"Average quality {evidence['avg_quality']:.2f}/8; dominant effect {evidence['dominant_effect']}.", "recommendation": "Gunakan certainty/risk of bias untuk menahan klaim berlebihan."})
+    rows.append({"aspect": "Meta-analysis potential", "score_or_status": f"{meta}/100", "insight": meta_analysis_readiness()["status"], "recommendation": "Lengkapi mean, SD, n, satuan outcome, dan effect size bila target Q1/Q2."})
+    rows.append({"aspect": "Risk of rejection", "score_or_status": risk, "insight": "Risiko penolakan turun jika metode transparan, novelty kuat, dan hasil tidak hanya deskriptif.", "recommendation": "Gunakan Reviewer Check sebelum submit."})
+    return pd.DataFrame(rows)
+
+
+def reviewer_check_df():
+    p = st.session_state.project
+    checks = []
+    def add(section, issue, severity, action):
+        checks.append({"section": section, "potential_reviewer_comment": issue, "severity": severity, "recommended_action": action})
+    title = analyze_title(p)
+    if title["score"] < 80:
+        add("Title/Objective", "Judul dan objective belum cukup spesifik untuk target Q-level.", "Major", "Perbaiki population, intervention/exposure, comparator, outcome, dan jenis review.")
+    if (prisma_compliance_df()["status"] == "Lengkap").mean() < 0.7:
+        add("Methods", "Pelaporan PRISMA belum lengkap dan metode sulit direplikasi.", "Major", "Lengkapi checklist PRISMA dan jelaskan semua proses screening/extraction.")
+    if (prisma_s_audit_df()["status"] == "Lengkap").mean() < 0.65:
+        add("Search Strategy", "Search strategy belum cukup transparan.", "Major", "Tuliskan search string per database, tanggal pencarian, filter, dan dokumentasi ekspor.")
+    if st.session_state.quality.empty:
+        add("Risk of Bias", "Quality/risk of bias assessment belum ada.", "Major", "Gunakan SYRCLE/JBI/ROSES/ROBINS-I sesuai desain studi.")
+    if st.session_state.extraction.empty:
+        add("Results", "Data extraction belum tersedia sehingga hasil tidak dapat disintesis.", "Major", "Isi tabel ekstraksi dan ringkas karakteristik studi.")
+    if meta_analysis_readiness()["score"] < 55 and "Meta-Analysis" in p.get("review_type", ""):
+        add("Analysis", "Judul menyebut meta-analysis, tetapi data belum siap untuk meta-analysis.", "Major", "Lengkapi data numerik atau ubah jenis naskah menjadi systematic review/narrative synthesis.")
+    if not checks:
+        add("Overall", "Naskah secara sistem sudah cukup siap untuk dikembangkan.", "Minor", "Lakukan proofreading, cek jurnal target, dan validasi manual oleh peneliti/pembimbing.")
+    return pd.DataFrame(checks)
+
+
+def build_manuscript_markdown():
+    p = st.session_state.project
+    counts = get_prisma_counts(True)
+    evidence = infer_evidence_strength()
+    gaps = novelty_gap_df()
+    method = make_methods_template()
+    return f"""# {p.get('title','Draft Systematic Review')}
+
+## Abstract
+Background: Evidence regarding {p.get('intervention','the intervention/exposure')} for {p.get('population','the target population')} remains fragmented across studies. Objective: This systematic review aimed to synthesize evidence on {p.get('outcome','main outcomes')} using the {p.get('framework','PICOS')} framework. Methods: {p.get('research_question','The research question has not been defined yet.')} Records were screened using predefined inclusion and exclusion criteria. Results: The current database contains {counts['records_database']} records, {counts['duplicates_removed']} duplicates removed, {counts['full_text_assessed']} full-text articles assessed, and {counts['studies_included']} studies included. Conclusion: The evidence strength is currently {evidence['strength']}. Claims should be adjusted to the final quality and risk of bias assessment.
+
+## 1. Introduction
+The topic of {p.get('intervention','intervention/exposure')} in {p.get('population','target population')} is relevant for agro, livestock, food, aquaculture, and environmental research because it is linked to productivity, sustainability, and evidence-based decision making. However, individual studies often differ in design, sample size, treatment dose, duration, comparator, and outcome measures. A systematic review is therefore needed to synthesize the available evidence transparently.
+
+### Research Gap and Novelty
+{gaps.iloc[-1]['gap_or_insight'] if not gaps.empty else 'The novelty statement needs to be refined after data extraction.'}
+
+### Objective
+This review aims to answer the following question: {p.get('research_question','')}
+
+## 2. Methods
+{method}
+
+## 3. Results
+The PRISMA flow currently reports {counts['records_database']} database records, {counts['records_screened']} screened records, {counts['full_text_assessed']} full-text assessed records, and {counts['studies_included']} included studies. Study characteristics, outcome direction, and quality assessment should be presented in tables generated from the system.
+
+## 4. Discussion
+The current synthesis indicates an evidence strength of {evidence['strength']} with dominant effect direction: {evidence['dominant_effect']}. Discussion should address consistency across studies, heterogeneity sources, risk of bias, certainty of evidence, and practical implications for the target domain.
+
+## 5. Limitations
+Potential limitations include database coverage, language and year filters, heterogeneity of intervention/exposure characteristics, variation in outcome measurement, incomplete effect size reporting, and risk of bias in primary studies.
+
+## 6. Implications and Future Research
+Future research should standardize outcome reporting, provide complete numerical data for meta-analysis, and explore subgroup factors such as dose, duration, study design, species/commodity, and environmental context.
+
+## 7. Conclusion
+The conclusion should be finalized after screening, risk of bias assessment, and data extraction are complete. Avoid overclaiming and align conclusions with the certainty of evidence.
+"""
+
+
+def docx_from_markdown_bytes(markdown_text: str, title: str = "Systematic Review Draft") -> bytes:
+    try:
+        from docx import Document
+        from docx.shared import Pt
+    except Exception as exc:
+        raise RuntimeError("python-docx belum terpasang. Jalankan: pip install python-docx") from exc
+    doc = Document()
+    styles = doc.styles
+    styles["Normal"].font.name = "Arial"
+    styles["Normal"].font.size = Pt(11)
+    current_list = False
+    for raw in markdown_text.splitlines():
+        line = raw.strip()
+        if not line:
+            doc.add_paragraph("")
+            continue
+        if line.startswith("# "):
+            doc.add_heading(line[2:].strip(), level=0)
+        elif line.startswith("## "):
+            doc.add_heading(line[3:].strip(), level=1)
+        elif line.startswith("### "):
+            doc.add_heading(line[4:].strip(), level=2)
+        elif line.startswith("- "):
+            doc.add_paragraph(line[2:].strip(), style="List Bullet")
+        elif re.match(r"^\d+\.\s+", line):
+            doc.add_paragraph(re.sub(r"^\d+\.\s+", "", line), style="List Number")
+        elif line.startswith("```"):
+            continue
+        else:
+            doc.add_paragraph(line.replace("**", ""))
+    bio = BytesIO()
+    doc.save(bio)
+    bio.seek(0)
+    return bio.getvalue()
+
+
+def make_cover_letter_markdown():
+    p = st.session_state.project
+    return f"""# Cover Letter Template
+
+Dear Editor,
+
+We are pleased to submit our manuscript entitled \"{p.get('title','[Manuscript Title]')}\" for consideration in your journal. This manuscript presents a systematic review in the field of {p.get('domain','[domain]')} focusing on {p.get('intervention','[intervention/exposure]')} and {p.get('outcome','[outcome]')} in {p.get('population','[population]')}.
+
+The review was structured using the {p.get('framework','PICOS/PECO')} framework and aims to answer the question: {p.get('research_question','[research question]')}
+
+We believe this manuscript is relevant to your journal because it provides a transparent synthesis of current evidence, identifies methodological gaps, and offers implications for future research and practice. The manuscript has not been published or submitted elsewhere.
+
+Sincerely,
+
+[Author Name]
+"""
+
 def make_export_zip():
     mem = BytesIO()
     with zipfile.ZipFile(mem, "w", zipfile.ZIP_DEFLATED) as z:
@@ -1309,10 +1668,20 @@ def make_export_zip():
         z.writestr("methods_template.md", make_methods_template())
         z.writestr("evidence_insight_report.md", build_insight_report())
         z.writestr("examples_and_guidance.md", make_guidance_markdown())
+        z.writestr("q_level_manuscript_draft.md", build_manuscript_markdown())
+        z.writestr("cover_letter_template.md", make_cover_letter_markdown())
+        z.writestr("q_level_manuscript_draft.docx", docx_from_markdown_bytes(build_manuscript_markdown(), "Systematic Review Draft"))
+        z.writestr("cover_letter_template.docx", docx_from_markdown_bytes(make_cover_letter_markdown(), "Cover Letter"))
         z.writestr("screening_results.xlsx", df_to_xlsx_bytes(st.session_state.articles, "Screening"))
         z.writestr("quality_assessment.xlsx", df_to_xlsx_bytes(st.session_state.quality, "Quality"))
         z.writestr("data_extraction.xlsx", df_to_xlsx_bytes(st.session_state.extraction, "Extraction"))
         z.writestr("prisma_counts.xlsx", df_to_xlsx_bytes(pd.DataFrame([get_prisma_counts(True)]), "PRISMA"))
+        z.writestr("prisma_2020_compliance.xlsx", df_to_xlsx_bytes(prisma_compliance_df(), "PRISMA_Checklist"))
+        z.writestr("prisma_s_search_audit.xlsx", df_to_xlsx_bytes(prisma_s_audit_df(), "PRISMA_S"))
+        z.writestr("meta_analysis_readiness.xlsx", df_to_xlsx_bytes(meta_analysis_readiness()["table"], "Meta_Readiness"))
+        z.writestr("novelty_gap_analysis.xlsx", df_to_xlsx_bytes(novelty_gap_df(), "Novelty_Gap"))
+        z.writestr("journal_targeting.xlsx", df_to_xlsx_bytes(journal_targeting_df(), "Journal_Targeting"))
+        z.writestr("reviewer_check.xlsx", df_to_xlsx_bytes(reviewer_check_df(), "Reviewer_Check"))
         z.writestr("project_state.json", json.dumps({
             "project": st.session_state.project,
             "criteria": st.session_state.criteria,
@@ -1397,8 +1766,9 @@ def page_workflow():
         ("4", "Screening", "Gunakan skor relevansi PICOS sebagai bantuan, lalu tetapkan keputusan Include/Maybe/Exclude.", "Output: daftar artikel eligible untuk full-text."),
         ("5", "PRISMA", "Pantau jumlah record dari identifikasi sampai studi include final.", "Output: angka PRISMA untuk naskah."),
         ("6", "Quality Assessment", "Nilai kualitas studi berdasarkan checklist.", "Output: kategori Low/Moderate/High."),
-        ("7", "Data Extraction", "Isi outcome, effect direction, effect size, temuan kunci, limitasi, dan implikasi.", "Output: matriks bukti untuk sintesis."),
-        ("8", "Insight & Export", "Sistem membaca seluruh hasil dan menyusun insight otomatis.", "Output: Evidence Insight Report, protocol, methods template, dan export ZIP."),
+        ("7", "Data Extraction", "Isi outcome, effect direction, effect size, mean, SD, n, temuan kunci, limitasi, dan implikasi.", "Output: matriks bukti untuk sintesis dan kesiapan meta-analysis."),
+        ("8", "Q-Level Tools", "Cek PRISMA, PRISMA-S, risk of bias, GRADE, meta-analysis readiness, novelty-gap, journal targeting, manuscript draft, dan reviewer check.", "Output: checklist kesiapan jurnal Q-level, draft manuscript DOCX, cover letter, dan file audit XLSX."),
+        ("9", "Insight & Export", "Sistem membaca seluruh hasil dan menyusun insight otomatis.", "Output: Evidence Insight Report, protocol, methods template, DOCX/XLSX, dan export ZIP."),
     ]
     for no, title, desc, out in steps:
         with st.container(border=True):
@@ -1411,7 +1781,8 @@ def page_workflow():
 - Perubahan pada **Langkah 1** membentuk ulang research question, inclusion-exclusion criteria, dan Boolean search.
 - Perubahan pada **Langkah 2** langsung memperbarui skor relevansi artikel pada Screening.
 - Keputusan **Screening** langsung mengubah angka PRISMA dan daftar artikel pada Quality Assessment serta Data Extraction.
-- Hasil **Quality Assessment** dan **Data Extraction** langsung dibaca oleh Evidence Insight Report dan Export ZIP.
+- Hasil **Quality Assessment** dan **Data Extraction** langsung dibaca oleh Q-Level Tools, Evidence Insight Report, dan Export ZIP.
+- Q-Level Tools membantu mengecek kesiapan PRISMA, PRISMA-S, risk of bias/GRADE, meta-analysis, novelty, jurnal target, dan draft manuscript.
 """)
 
     st.subheader("Ringkasan cepat proyek")
@@ -1580,6 +1951,10 @@ def page_import_screening():
         column_config={
             "duplicate": st.column_config.CheckboxColumn("Duplicate"),
             "picos_relevance_score": st.column_config.ProgressColumn("PICOS relevance", min_value=0, max_value=100),
+            "reviewer1_decision": st.column_config.SelectboxColumn("Reviewer 1", options=["Belum dinilai", "Include", "Maybe", "Exclude"]),
+            "reviewer2_decision": st.column_config.SelectboxColumn("Reviewer 2", options=["Belum dinilai", "Include", "Maybe", "Exclude"]),
+            "screening_conflict": st.column_config.CheckboxColumn("Conflict"),
+            "consensus_decision": st.column_config.SelectboxColumn("Consensus", options=["Belum dinilai", "Include", "Maybe", "Exclude", "Perlu diskusi"]),
             "screening_decision": st.column_config.SelectboxColumn("Screening decision", options=["Belum dinilai", "Include", "Maybe", "Exclude"]),
             "full_text_decision": st.column_config.SelectboxColumn("Full-text decision", options=["Belum dinilai", "Include", "Exclude"]),
             "exclusion_reason": st.column_config.SelectboxColumn("Exclusion reason", options=["", "Tidak relevan", "Bukan studi empiris", "Populasi tidak sesuai", "Intervensi tidak sesuai", "Outcome tidak sesuai", "Duplikat", "Data tidak lengkap"]),
@@ -1588,7 +1963,7 @@ def page_import_screening():
         key="screening_editor"
     )
     if st.button("Simpan hasil screening dan sinkronkan", use_container_width=True):
-        st.session_state.articles = flag_duplicates(edited)
+        st.session_state.articles = flag_duplicates(update_dual_reviewer_consensus(edited))
         st.session_state.articles = apply_relevance_scoring(st.session_state.articles)
         sync_quality_extraction()
         st.success("Screening disimpan. PRISMA, Quality Assessment, dan Data Extraction sudah disinkronkan.")
@@ -1638,7 +2013,7 @@ Studies included in final synthesis: {counts['studies_included']}
     edited = st.data_editor(
         q,
         use_container_width=True,
-        disabled=["quality_score", "quality_category"],
+        disabled=["quality_score", "quality_category", "overall_risk_of_bias", "certainty_of_evidence"],
         column_config={
             "clear_objective": st.column_config.CheckboxColumn("Clear objective"),
             "appropriate_design": st.column_config.CheckboxColumn("Appropriate design"),
@@ -1648,6 +2023,14 @@ Studies included in final synthesis: {counts['studies_included']}
             "adequate_statistics": st.column_config.CheckboxColumn("Adequate statistics"),
             "bias_control": st.column_config.CheckboxColumn("Bias control"),
             "complete_reporting": st.column_config.CheckboxColumn("Complete reporting"),
+            "selection_bias": st.column_config.SelectboxColumn("Selection bias", options=["Low", "High", "Unclear"]),
+            "performance_bias": st.column_config.SelectboxColumn("Performance bias", options=["Low", "High", "Unclear"]),
+            "detection_bias": st.column_config.SelectboxColumn("Detection bias", options=["Low", "High", "Unclear"]),
+            "attrition_bias": st.column_config.SelectboxColumn("Attrition bias", options=["Low", "High", "Unclear"]),
+            "reporting_bias": st.column_config.SelectboxColumn("Reporting bias", options=["Low", "High", "Unclear"]),
+            "other_bias": st.column_config.SelectboxColumn("Other bias", options=["Low", "High", "Unclear"]),
+            "overall_risk_of_bias": st.column_config.SelectboxColumn("Overall RoB", options=["Low", "High", "Unclear"]),
+            "certainty_of_evidence": st.column_config.SelectboxColumn("Certainty", options=["Not assessed", "High", "Moderate", "Low", "Very Low"]),
         },
         key="quality_editor"
     )
@@ -1676,10 +2059,20 @@ def page_extraction():
         use_container_width=True,
         num_rows="dynamic",
         column_config={
+            "sample_size": st.column_config.NumberColumn("Sample size"),
+            "n_intervention": st.column_config.NumberColumn("N intervention"),
+            "n_control": st.column_config.NumberColumn("N control"),
+            "mean_intervention": st.column_config.NumberColumn("Mean intervention"),
+            "sd_intervention": st.column_config.NumberColumn("SD intervention"),
+            "mean_control": st.column_config.NumberColumn("Mean control"),
+            "sd_control": st.column_config.NumberColumn("SD control"),
+            "effect_size": st.column_config.NumberColumn("Effect size"),
+            "p_value": st.column_config.NumberColumn("p-value"),
             "effect_direction": st.column_config.SelectboxColumn("Effect direction", options=["", "Positive", "Negative", "No effect", "Mixed"]),
             "key_finding": st.column_config.TextColumn("Key finding", width="large"),
             "limitations": st.column_config.TextColumn("Limitations", width="large"),
             "implication": st.column_config.TextColumn("Implication", width="large"),
+            "novelty_note": st.column_config.TextColumn("Novelty note", width="large"),
         },
         key="extraction_editor"
     )
@@ -1694,8 +2087,107 @@ def page_extraction():
     download_df_button("Download data_extraction.xlsx", st.session_state.extraction, "data_extraction.xlsx")
 
 
+
+
+def page_qlevel_tools():
+    st.header("8. Q-Level Manuscript Tools")
+    sync_if_auto(reason="membuka Q-level tools")
+    render_sync_status()
+    st.write("Halaman ini mengecek kesiapan naskah sebelum dikembangkan untuk jurnal bereputasi. Semua indikator membaca data dari menu sebelumnya.")
+
+    tabs = st.tabs([
+        "PRISMA 2020",
+        "PRISMA-S Search Audit",
+        "Risk of Bias & GRADE",
+        "Meta-Analysis Readiness",
+        "Novelty & Gap",
+        "Journal Targeting",
+        "Manuscript Builder",
+        "Reviewer Check",
+    ])
+
+    with tabs[0]:
+        st.subheader("PRISMA 2020 Compliance Checker")
+        df = prisma_compliance_df()
+        complete = (df["status"] == "Lengkap").mean() if not df.empty else 0
+        st.metric("Kelengkapan PRISMA", f"{complete*100:.0f}%")
+        st.dataframe(df, use_container_width=True)
+        download_df_button("Download prisma_2020_compliance.xlsx", df, "prisma_2020_compliance.xlsx")
+
+    with tabs[1]:
+        st.subheader("PRISMA-S Search Strategy Audit")
+        df = prisma_s_audit_df()
+        complete = (df["status"] == "Lengkap").mean() if not df.empty else 0
+        st.metric("Kelengkapan PRISMA-S", f"{complete*100:.0f}%")
+        st.dataframe(df, use_container_width=True)
+        st.info("Catatan: untuk submit jurnal, search string idealnya dicatat per database karena sintaks Scopus, Web of Science, PubMed, dan CAB Abstracts bisa berbeda.")
+        p = st.session_state.project
+        p["search_date"] = st.date_input("Tanggal pencarian terakhir", value=pd.to_datetime(p.get("search_date", str(date.today()))).date() if p.get("search_date") else date.today()).isoformat()
+        download_df_button("Download prisma_s_search_audit.xlsx", df, "prisma_s_search_audit.xlsx")
+
+    with tabs[2]:
+        st.subheader("Risk of Bias dan Certainty of Evidence")
+        if st.session_state.quality.empty:
+            st.warning("Belum ada artikel include. Lakukan screening/full-text include terlebih dahulu.")
+        else:
+            q = calculate_quality(st.session_state.quality)
+            st.session_state.quality = q
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Rata-rata quality score", f"{pd.to_numeric(q['quality_score'], errors='coerce').fillna(0).mean():.2f}/8")
+            c2.metric("High quality", int((q["quality_category"] == "High").sum()))
+            c3.metric("Low risk of bias", int((q["overall_risk_of_bias"] == "Low").sum()))
+            st.dataframe(q[["id", "title", "quality_score", "quality_category", "overall_risk_of_bias", "certainty_of_evidence", "grade_downgrade_reason"]], use_container_width=True)
+            download_df_button("Download risk_of_bias_grade.xlsx", q, "risk_of_bias_grade.xlsx")
+
+    with tabs[3]:
+        st.subheader("Meta-Analysis Readiness Checker")
+        readiness = meta_analysis_readiness()
+        c1, c2 = st.columns(2)
+        c1.metric("Meta-analysis readiness score", f"{readiness['score']}/100")
+        c2.metric("Status", readiness["status"])
+        for reason in readiness["reasons"]:
+            st.write("- " + reason)
+        if not readiness["table"].empty:
+            st.dataframe(readiness["table"], use_container_width=True)
+            download_df_button("Download meta_analysis_readiness.xlsx", readiness["table"], "meta_analysis_readiness.xlsx")
+        st.info("Agar siap meta-analysis, isi kolom mean, SD, n, unit outcome, effect size, dan comparator pada Data Extraction.")
+
+    with tabs[4]:
+        st.subheader("Novelty & Gap Analyzer")
+        df = novelty_gap_df()
+        st.dataframe(df, use_container_width=True)
+        download_df_button("Download novelty_gap_analysis.xlsx", df, "novelty_gap_analysis.xlsx")
+
+    with tabs[5]:
+        st.subheader("Journal Targeting Assistant")
+        df = journal_targeting_df()
+        st.dataframe(df, use_container_width=True)
+        st.warning("Sistem membantu mengecek kecocokan dan kesiapan, tetapi tidak menjamin artikel diterima di jurnal Q1/Q2. Validasi manual scope, APC, indexing, dan author guidelines tetap wajib.")
+        download_df_button("Download journal_targeting.xlsx", df, "journal_targeting.xlsx")
+
+    with tabs[6]:
+        st.subheader("Q-Level Manuscript Builder")
+        manuscript = build_manuscript_markdown()
+        st.markdown(manuscript)
+        col1, col2, col3 = st.columns(3)
+        col1.download_button("Download manuscript_draft.md", manuscript.encode("utf-8"), "q_level_manuscript_draft.md", "text/markdown", use_container_width=True)
+        col2.download_button("Download manuscript_draft.docx", docx_from_markdown_bytes(manuscript, "Systematic Review Draft"), "q_level_manuscript_draft.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+        cover = make_cover_letter_markdown()
+        col3.download_button("Download cover_letter.docx", docx_from_markdown_bytes(cover, "Cover Letter"), "cover_letter_template.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+
+    with tabs[7]:
+        st.subheader("Pre-Submission Reviewer Check")
+        df = reviewer_check_df()
+        st.dataframe(df, use_container_width=True)
+        major = int((df["severity"] == "Major").sum()) if not df.empty else 0
+        if major:
+            st.error(f"Masih ada {major} catatan major yang sebaiknya diperbaiki sebelum submit.")
+        else:
+            st.success("Tidak ada catatan major otomatis. Tetap lakukan validasi manual oleh peneliti/pembimbing.")
+        download_df_button("Download reviewer_check.xlsx", df, "reviewer_check.xlsx")
+
 def page_insight_export():
-    st.header("8. Evidence Insight Report dan Export")
+    st.header("9. Evidence Insight Report dan Export")
     sync_if_auto(reason="membuka insight & export")
     render_sync_status()
     st.write("Halaman ini membaca semua bagian sistem dan menyusun informasi/insight otomatis untuk membantu penulisan Results, Discussion, Limitations, dan Future Research.")
@@ -1763,7 +2255,8 @@ def main():
             "3-4. Import & Screening",
             "5-6. PRISMA & Quality",
             "7. Data Extraction",
-            "8. Insight & Export",
+            "8. Q-Level Tools",
+            "9. Insight & Export",
         ],
     )
     if page == "Panduan Workflow":
@@ -1778,7 +2271,9 @@ def main():
         page_prisma_quality()
     elif page == "7. Data Extraction":
         page_extraction()
-    elif page == "8. Insight & Export":
+    elif page == "8. Q-Level Tools":
+        page_qlevel_tools()
+    elif page == "9. Insight & Export":
         page_insight_export()
 
 
