@@ -2,6 +2,8 @@ import json
 import re
 import zipfile
 from datetime import date, datetime
+
+import requests
 from io import BytesIO
 
 import numpy as np
@@ -15,7 +17,7 @@ st.set_page_config(
 )
 
 APP_TITLE = "Agro & Biosystems Systematic Review Builder"
-APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + Personal AI Model Selector + Biosystems Edition"
+APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + Personal Chat Completions API + Biosystems Edition"
 
 ARTICLE_COLUMNS = [
     "id", "title", "authors", "year", "journal", "doi", "country", "study_design",
@@ -1909,7 +1911,7 @@ def make_export_zip():
             safe_name = re.sub(r"[^a-zA-Z0-9]+", "_", str(ai_name)).strip("_").lower() or "ai_insight"
             z.writestr(f"online_ai_{safe_name}.md", str(ai_text))
         z.writestr("project_state.srproj.json", resume_project_state_bytes("Export ZIP"))
-        z.writestr("project_state_README.txt", "Gunakan file project_state.srproj.json pada menu sidebar 'Simpan & lanjutkan project' untuk melanjutkan pekerjaan tanpa mulai dari awal. API key pribadi tidak disimpan di file project/export.")
+        z.writestr("project_state_README.txt", "Gunakan file project_state.srproj.json pada menu sidebar 'Simpan & lanjutkan project' untuk melanjutkan pekerjaan tanpa mulai dari awal. API key pribadi dan API Base URL tidak disimpan di file project/export.")
     mem.seek(0)
     return mem.getvalue()
 
@@ -1930,8 +1932,8 @@ def download_df_button(label, df, filename):
 def clear_personal_api_key():
     """Remove the user-provided API key and cached model list from the current Streamlit session only."""
     for key in [
-        "personal_openai_api_key", "openai_api_key_input",
-        "openai_available_models", "openai_models_last_checked", "openai_models_error",
+        "personal_openai_api_key", "openai_api_key_input", "personal_api_base_url", "api_base_url_input",
+        "openai_available_models", "openai_models_last_checked", "openai_models_error", "openai_models_api_base",
         "manual_model_select", "manual_model_text",
     ]:
         if key in st.session_state:
@@ -1941,6 +1943,50 @@ def clear_personal_api_key():
 def get_personal_api_key() -> str:
     """Read the optional personal API key from session state without persisting it."""
     return str(st.session_state.get("personal_openai_api_key", "") or "").strip()
+
+
+def normalize_api_base_url(api_base: str) -> str:
+    """Normalize user supplied API base so requests use {base}/v1/... consistently."""
+    base = str(api_base or "https://api.openai.com").strip().rstrip("/")
+    if not base:
+        base = "https://api.openai.com"
+    if base.endswith("/v1"):
+        base = base[:-3].rstrip("/")
+    return base
+
+
+def get_personal_api_base_url() -> str:
+    """Read optional OpenAI-compatible API base URL from the current session only."""
+    return normalize_api_base_url(st.session_state.get("personal_api_base_url", "https://api.openai.com"))
+
+
+def chat_completions_url(api_base: str) -> str:
+    return f"{normalize_api_base_url(api_base)}/v1/chat/completions"
+
+
+def models_url(api_base: str) -> str:
+    return f"{normalize_api_base_url(api_base)}/v1/models"
+
+
+def build_bearer_headers(api_key: str) -> dict:
+    return {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+
+def compact_api_error(response) -> str:
+    """Create a safe error message without exposing key/header values."""
+    try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            detail = payload.get("error") or payload.get("message") or payload
+            if isinstance(detail, dict):
+                detail = detail.get("message") or detail.get("type") or detail
+            return str(detail)[:500]
+    except Exception:
+        pass
+    return str(getattr(response, "text", ""))[:500]
 
 
 def build_ai_project_context(max_records: int = 25) -> str:
@@ -2035,38 +2081,50 @@ def sort_model_ids(model_ids: list[str]) -> list[str]:
     return sorted(cleaned, key=rank)
 
 
-def list_openai_models_with_key(api_key: str) -> tuple[bool, list[str] | str]:
-    """List text-capable model IDs available to the user's temporary API key."""
+def list_openai_models_with_key(api_key: str, api_base: str | None = None) -> tuple[bool, list[str] | str]:
+    """List text-capable model IDs via OpenAI-compatible GET {api_base}/v1/models."""
     if not api_key:
         return False, "API key belum diisi."
+    base = normalize_api_base_url(api_base or get_personal_api_base_url())
     try:
-        from openai import OpenAI
-    except Exception:
-        return False, "Package 'openai' belum terpasang. Jalankan: pip install openai"
-    try:
-        client = OpenAI(api_key=api_key)
-        response = client.models.list()
+        response = requests.get(
+            models_url(base),
+            headers=build_bearer_headers(api_key),
+            timeout=45,
+        )
+        if response.status_code >= 400:
+            detail = compact_api_error(response)
+            if response.status_code in (401, 403):
+                msg = "API key tidak valid atau tidak memiliki izin untuk membaca daftar model."
+            elif response.status_code == 429:
+                msg = "Limit/rate limit API tercapai atau quota akun tidak mencukupi saat mengecek model."
+            else:
+                msg = f"Gagal membaca daftar model dari {base}/v1/models: {detail}"
+            st.session_state.openai_models_error = msg
+            return False, msg
+
+        payload = response.json()
         raw = []
-        for item in getattr(response, "data", []) or []:
-            mid = getattr(item, "id", None)
-            if mid:
-                raw.append(str(mid))
+        for item in payload.get("data", []) if isinstance(payload, dict) else []:
+            if isinstance(item, dict) and item.get("id"):
+                raw.append(str(item.get("id")))
         models = sort_model_ids([m for m in raw if is_probable_text_model(m)])
         if not models:
-            return False, "Model text-generation tidak ditemukan pada API key ini. Coba isi model secara manual."
+            msg = "Model text-generation tidak ditemukan pada API base/API key ini. Coba isi model secara manual."
+            st.session_state.openai_models_error = msg
+            return False, msg
         st.session_state.openai_available_models = models
         st.session_state.openai_models_last_checked = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.session_state.openai_models_api_base = base
         if "openai_models_error" in st.session_state:
             del st.session_state["openai_models_error"]
         return True, models
+    except requests.exceptions.RequestException as exc:
+        msg = f"Gagal terhubung ke API base {base}: {exc}"
+        st.session_state.openai_models_error = msg
+        return False, msg
     except Exception as exc:
-        msg = str(exc)
-        if "api_key" in msg.lower() or "authentication" in msg.lower() or "401" in msg:
-            msg = "API key tidak valid atau tidak memiliki izin untuk membaca daftar model."
-        elif "rate" in msg.lower() or "quota" in msg.lower() or "429" in msg:
-            msg = "Limit/rate limit API tercapai atau quota akun tidak mencukupi saat mengecek model."
-        else:
-            msg = f"Gagal membaca daftar model: {exc}"
+        msg = f"Gagal membaca daftar model: {exc}"
         st.session_state.openai_models_error = msg
         return False, msg
 
@@ -2111,55 +2169,68 @@ def get_effective_ai_model(api_key: str = "") -> tuple[str, str]:
     st.session_state.ai_config = ai_cfg
     return model, source
 
-def call_openai_responses_api(api_key: str, model: str, user_prompt: str) -> tuple[bool, str]:
-    """Call OpenAI Responses API using the user's temporary personal API key."""
+def call_openai_responses_api(api_key: str, model: str, user_prompt: str, api_base: str | None = None) -> tuple[bool, str]:
+    """Call OpenAI-compatible Chat Completions API using POST {api_base}/v1/chat/completions."""
     if not api_key:
         return False, "API key belum diisi. Gunakan Offline Mode atau masukkan API key pribadi terlebih dahulu."
-    try:
-        from openai import OpenAI
-    except Exception:
-        return False, "Package 'openai' belum terpasang. Jalankan: pip install openai"
+    base = normalize_api_base_url(api_base or get_personal_api_base_url())
+    url = chat_completions_url(base)
+    system_message = (
+        "You are an academic systematic review assistant for agriculture, livestock, aquaculture, food science, "
+        "agricultural engineering and biosystems, and environmental evidence synthesis. Analyze only the provided project data. "
+        "Do not fabricate citations, databases, study counts, or numerical results. Write in formal Bahasa Indonesia, "
+        "concise but useful for manuscript improvement toward reputable journals. When evidence is insufficient, say exactly "
+        "what is missing and what the researcher should complete."
+    )
+    body = {
+        "model": model or ECONOMY_MODEL_FALLBACK,
+        "messages": [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 2200,
+    }
 
     try:
-        client = OpenAI(api_key=api_key)
-        response = client.responses.create(
-            model=model or "gpt-4.1-mini",
-            input=[
-                {
-                    "role": "developer",
-                    "content": (
-                        "You are an academic systematic review assistant for agriculture, livestock, aquaculture, food science, and environmental evidence synthesis. "
-                        "Analyze only the provided project data. Do not fabricate citations, databases, study counts, or numerical results. "
-                        "Write in formal Bahasa Indonesia, concise but useful for manuscript improvement toward reputable journals. "
-                        "When evidence is insufficient, say exactly what is missing and what the researcher should complete."
-                    ),
-                },
-                {"role": "user", "content": user_prompt},
-            ],
-            max_output_tokens=2200,
+        response = requests.post(
+            url,
+            headers=build_bearer_headers(api_key),
+            json=body,
+            timeout=120,
         )
-        text = getattr(response, "output_text", None)
-        if text:
-            return True, text
-        # Fallback for SDK versions that expose output in a lower-level structure.
-        try:
-            chunks = []
-            for item in getattr(response, "output", []) or []:
-                for content in getattr(item, "content", []) or []:
-                    maybe_text = getattr(content, "text", None)
-                    if maybe_text:
-                        chunks.append(maybe_text)
-            if chunks:
-                return True, "\n".join(chunks)
-        except Exception:
-            pass
-        return True, str(response)
+        if response.status_code >= 400:
+            detail = compact_api_error(response)
+            if response.status_code in (401, 403):
+                return False, "API key tidak valid, sudah dicabut, atau tidak memiliki akses model/API base yang dipilih."
+            if response.status_code == 404:
+                return False, f"Endpoint atau model tidak ditemukan. Pastikan API Base benar dan mendukung {url}. Detail: {detail}"
+            if response.status_code == 429:
+                return False, "Limit/rate limit API tercapai atau saldo/quota akun API tidak mencukupi."
+            return False, f"Gagal membuat AI insight dari Chat Completions API ({response.status_code}): {detail}"
+
+        payload = response.json()
+        choices = payload.get("choices", []) if isinstance(payload, dict) else []
+        if choices:
+            message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
+            content = message.get("content")
+            if isinstance(content, list):
+                # Some OpenAI-compatible APIs return content parts. Join text-like parts.
+                parts = []
+                for part in content:
+                    if isinstance(part, dict):
+                        parts.append(str(part.get("text") or part.get("content") or ""))
+                    else:
+                        parts.append(str(part))
+                content = "\n".join([p for p in parts if p])
+            if content:
+                return True, str(content)
+            if choices[0].get("text"):
+                return True, str(choices[0].get("text"))
+        return True, json.dumps(payload, ensure_ascii=False, indent=2)
+    except requests.exceptions.RequestException as exc:
+        return False, f"Gagal terhubung ke API base {base}: {exc}"
     except Exception as exc:
-        msg = str(exc)
-        if "api_key" in msg.lower() or "authentication" in msg.lower() or "401" in msg:
-            return False, "API key tidak valid, sudah dicabut, atau tidak memiliki akses model yang dipilih."
-        if "rate" in msg.lower() or "quota" in msg.lower() or "429" in msg:
-            return False, "Limit/rate limit API tercapai atau saldo/quota akun API tidak mencukupi."
         return False, f"Gagal membuat AI insight: {exc}"
 
 
@@ -2197,7 +2268,7 @@ def render_online_ai_insight_panel(location: str = ""):
     model, model_source = get_effective_ai_model(api_key)
 
     st.subheader("Online AI Insight Opsional")
-    st.caption("Fitur ini opsional. Tanpa API key, seluruh sistem tetap berjalan menggunakan Offline Mode berbasis rule, checklist, dan template.")
+    st.caption("Fitur ini opsional. Tanpa API key, seluruh sistem tetap berjalan menggunakan Offline Mode berbasis rule, checklist, dan template. Online Mode memakai format OpenAI-compatible Chat Completions: POST {api-base}/v1/chat/completions dengan Authorization: Bearer <key>.")
 
     if mode != "Online AI Mode":
         st.info("Online AI Mode belum aktif. Aktifkan dari sidebar bila ingin memakai API key pribadi sementara.")
@@ -2222,7 +2293,7 @@ def render_online_ai_insight_panel(location: str = ""):
     if st.button("🤖 Buat AI Insight Online", key=f"make_ai_insight_{location}", use_container_width=True):
         prompt = make_ai_task_prompt(task)
         with st.spinner("Membuat AI insight online berdasarkan data project..."):
-            ok, result = call_openai_responses_api(api_key, model, prompt)
+            ok, result = call_openai_responses_api(api_key, model, prompt, get_personal_api_base_url())
         if ok:
             st.session_state.ai_outputs[task] = result
             st.success("AI insight berhasil dibuat.")
@@ -2249,8 +2320,8 @@ def reset_project_state():
     keys_to_remove = [
         "project", "criteria", "terms", "articles", "quality", "extraction",
         "prisma_manual", "notes", "sync_config", "ai_config", "ai_outputs",
-        "personal_openai_api_key", "openai_api_key_input", "openai_available_models",
-        "openai_models_last_checked", "openai_models_error", "manual_model_select",
+        "personal_openai_api_key", "openai_api_key_input", "personal_api_base_url", "api_base_url_input",
+        "openai_available_models", "openai_models_last_checked", "openai_models_error", "openai_models_api_base", "manual_model_select",
         "manual_model_text", "reset_confirm_checkbox", "reset_confirm_text",
         "reset_success_message",
     ]
@@ -2300,7 +2371,7 @@ def render_sidebar():
             model_selection_options,
             index=model_selection_options.index(current_selection) if current_selection in model_selection_options else 0,
             key="ai_model_selection_radio",
-            help="Mode otomatis memilih dari daftar model yang tersedia pada API key. Jika daftar belum dicek, aplikasi memakai fallback default.",
+            help="Mode otomatis memilih dari daftar model yang tersedia pada API base/API key. Jika daftar belum dicek, aplikasi memakai fallback default.",
         )
 
         if st.button("Hapus API key dari sesi ini", use_container_width=True):
@@ -2309,16 +2380,23 @@ def render_sidebar():
             st.rerun()
 
         st.text_input(
-            "OpenAI API Key pribadi",
+            "API Key pribadi / Bearer token",
             type="password",
             key="personal_openai_api_key",
             help="Opsional. API key hanya dipakai selama sesi ini dan tidak disimpan ke project state, ZIP export, XLSX, DOCX, atau Markdown.",
         )
+        st.text_input(
+            "API Base URL",
+            value=st.session_state.get("personal_api_base_url", "https://api.openai.com"),
+            key="personal_api_base_url",
+            help="Isi base URL tanpa endpoint akhir. Contoh: https://api.openai.com atau https://api-base. Sistem akan memakai POST {api-base}/v1/chat/completions.",
+        )
         api_key = get_personal_api_key()
+        st.caption(f"Endpoint chat yang digunakan: `{chat_completions_url(get_personal_api_base_url())}`")
 
         if api_key:
             if st.button("🔎 Cek model tersedia dari API key", use_container_width=True):
-                ok, result = list_openai_models_with_key(api_key)
+                ok, result = list_openai_models_with_key(api_key, get_personal_api_base_url())
                 if ok:
                     st.success(f"Berhasil membaca {len(result)} model text-generation dari API key.")
                 else:
@@ -2340,7 +2418,7 @@ def render_sidebar():
                     available_models,
                     index=default_index,
                     key="manual_model_select",
-                    help="Daftar ini berasal dari API key yang sedang aktif pada sesi ini.",
+                    help="Daftar ini berasal dari API base/API key yang sedang aktif pada sesi ini.",
                 )
             else:
                 ai_cfg["manual_model"] = st.text_input(

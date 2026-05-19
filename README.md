@@ -77,15 +77,15 @@ Contoh otomatis tersedia untuk:
 
 ### 9. Optional Personal AI Insight + Model Selector
 - Default sistem tetap **Offline Mode** tanpa API.
-- Pengguna dapat mengaktifkan **Online AI Mode** dan memasukkan OpenAI API Key pribadi secara sementara.
-- API key dimasukkan melalui input password di sidebar.
-- API key tidak disimpan ke `.srproj.json`, ZIP export, XLSX, DOCX, Markdown, atau kode aplikasi.
+- Pengguna dapat mengaktifkan **Online AI Mode** dan memasukkan API Key/Bearer token pribadi secara sementara.
+- API key dimasukkan melalui input password di sidebar, sedangkan **API Base URL** dapat diisi sesuai provider. Sistem memakai format `POST {api-base}/v1/chat/completions` dengan header `Authorization: Bearer <your-key>`.
+- API key dan API Base URL tidak disimpan ke `.srproj.json`, ZIP export, XLSX, DOCX, Markdown, atau kode aplikasi.
 - Tersedia tombol **Hapus API key dari sesi ini** yang juga menghapus cache daftar model.
 - Tersedia tiga pilihan model:
-  - **Auto pilih model hemat biaya**: sistem memilih model ringan/mini yang tersedia pada API key pengguna.
-  - **Auto pilih model kualitas tinggi**: sistem memilih model paling kuat yang tersedia pada API key pengguna.
-  - **Pilih manual**: pengguna memilih dari daftar model yang dibaca dari API key, atau mengetik model sendiri.
-- Tombol **Cek model tersedia dari API key** membaca daftar model text-generation dari akun API pengguna untuk sesi itu saja.
+  - **Auto pilih model hemat biaya**: sistem memilih model ringan/mini yang tersedia pada API base/API key pengguna.
+  - **Auto pilih model kualitas tinggi**: sistem memilih model paling kuat yang tersedia pada API base/API key pengguna.
+  - **Pilih manual**: pengguna memilih dari daftar model yang dibaca dari API base/API key, atau mengetik model sendiri.
+- Tombol **Cek model tersedia dari API key** membaca daftar model text-generation dari endpoint `GET {api-base}/v1/models` bila provider mendukung. Jika tidak mendukung, user tetap bisa mengetik model manual.
 - Jika daftar model belum dicek atau gagal dibaca, sistem memakai fallback default agar fitur tetap bisa dicoba.
 - Insight online yang dapat dibuat:
   - Novelty & Gap Insight
@@ -157,14 +157,36 @@ Dengan cara ini, peneliti tidak perlu menyelesaikan systematic review dalam satu
 
 Untuk aplikasi Streamlit online yang digunakan banyak orang, jangan menanam API key developer di dalam kode. Gunakan alur berikut:
 
+Format request Online AI yang digunakan sistem:
+
+```text
+POST {api-base}/v1/chat/completions
+Authorization: Bearer <your-key>
+Content-Type: application/json
+```
+
+Body utama yang dikirim:
+
+```json
+{
+  "model": "model-yang-dipilih",
+  "messages": [
+    {"role": "system", "content": "instruksi sistematis review"},
+    {"role": "user", "content": "data project dan tugas insight"}
+  ],
+  "temperature": 0.2,
+  "max_tokens": 2200
+}
+```
+
 1. Buka sidebar **Online AI Insight (opsional)**.
 2. Pilih **Online AI Mode**.
 3. Pilih strategi model:
    - **Auto pilih model hemat biaya** untuk penggunaan lebih ekonomis.
    - **Auto pilih model kualitas tinggi** untuk insight yang lebih kuat.
    - **Pilih manual** untuk menentukan model sendiri.
-4. Masukkan OpenAI API Key pribadi pada kolom password.
-5. Klik **Cek model tersedia dari API key** agar sistem membaca daftar model yang dapat digunakan oleh akun tersebut.
+4. Masukkan API Key pribadi/Bearer token pada kolom password dan isi **API Base URL**. Contoh default: `https://api.openai.com`. Untuk provider kompatibel, isi base URL tanpa `/v1/chat/completions`.
+5. Klik **Cek model tersedia dari API key** agar sistem mencoba membaca daftar model dari `GET {api-base}/v1/models`. Jika gagal, pilih/tulis model manual.
 6. Jika memakai mode manual, pilih model dari daftar atau tulis model secara manual.
 7. Buka tab **Online AI Insight** pada Q-Level Tools atau halaman Insight & Export.
 8. Pilih jenis insight dan klik **Buat AI Insight Online**.
@@ -172,7 +194,7 @@ Untuk aplikasi Streamlit online yang digunakan banyak orang, jangan menanam API 
 
 Tanpa API key, aplikasi tetap berjalan penuh dengan Offline Mode berbasis rule, checklist, template, dan export dokumen.
 
-API key bersifat sementara pada sesi Streamlit dan sengaja tidak dimasukkan ke project state maupun export ZIP. Daftar model yang terbaca dari API key juga hanya disimpan pada session state, bukan pada file project.
+API key dan API Base URL bersifat sementara pada sesi Streamlit dan sengaja tidak dimasukkan ke project state maupun export ZIP. Daftar model yang terbaca dari API base/API key juga hanya disimpan pada session state, bukan pada file project.
 
 ## Format Import Artikel
 
