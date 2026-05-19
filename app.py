@@ -9,13 +9,13 @@ import pandas as pd
 import streamlit as st
 
 st.set_page_config(
-    page_title="Agro Systematic Review Builder",
+    page_title="Agro & Biosystems Systematic Review Builder",
     page_icon="🌾",
     layout="wide",
 )
 
-APP_TITLE = "Agro Systematic Review Builder"
-APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + Personal AI Model Selector Edition"
+APP_TITLE = "Agro & Biosystems Systematic Review Builder"
+APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + Personal AI Model Selector + Biosystems Edition"
 
 ARTICLE_COLUMNS = [
     "id", "title", "authors", "year", "journal", "doi", "country", "study_design",
@@ -75,6 +75,13 @@ DOMAIN_PROFILES = {
         "outcomes": ["emission", "carbon", "biodiversity", "water quality", "soil health", "resilience", "sustainability"],
         "databases": ["Scopus", "Web of Science", "Environmental Evidence", "ScienceDirect", "SpringerLink", "Taylor & Francis"],
         "quality_tool": "ROSES dan Collaboration for Environmental Evidence/CEE critical appraisal."
+    },
+    "Teknik Pertanian dan Biosistem": {
+        "objects": ["agricultural machinery", "farm machinery", "irrigation", "greenhouse", "postharvest", "drying", "sensor", "iot", "remote sensing", "precision agriculture", "biosystem", "agricultural system", "smallholder farm", "soil", "crop"],
+        "interventions": ["smart irrigation", "automated irrigation", "precision agriculture", "mechanization", "controlled traffic", "dryer", "solar dryer", "greenhouse technology", "sensor", "iot", "drone", "remote sensing", "decision support", "renewable energy"],
+        "outcomes": ["water use efficiency", "crop yield", "energy efficiency", "labor productivity", "drying rate", "product quality", "soil compaction", "irrigation efficiency", "system performance", "cost", "adoption", "emission"],
+        "databases": ["Scopus", "Web of Science", "CAB Abstracts", "AGRICOLA", "ASABE Technical Library", "ScienceDirect", "IEEE Xplore", "SpringerLink", "Taylor & Francis"],
+        "quality_tool": "ROSES/CEE critical appraisal untuk evidence synthesis teknik-lingkungan, JBI adapted checklist untuk studi observasional, serta checklist rekayasa untuk validasi alat, uji performa, eksperimen lapang, simulasi-model, dan sensor/IoT."
     },
 }
 
@@ -377,6 +384,58 @@ DOMAIN_FRAMEWORK_EXAMPLES = {
         },
         "insight": "PECO tepat karena land-use change adalah paparan/kondisi. Catat tipe perubahan lahan, waktu sejak perubahan, zona iklim, dan indikator biodiversitas.",
     },
+    ("Teknik Pertanian dan Biosistem", "PICOS"): {
+        "title": "Smart Irrigation Technologies for Improving Water Use Efficiency and Crop Yield in Agricultural Systems: A Systematic Review",
+        "population": "agricultural cropping systems or irrigated farms",
+        "intervention": "smart irrigation technologies or automated irrigation systems",
+        "comparator": "conventional irrigation or farmer-managed irrigation",
+        "outcome": "water use efficiency; crop yield; irrigation water productivity; energy use; system performance",
+        "study_design": "field trials, controlled experiments, and simulation-validation studies",
+        "research_question": "How do smart irrigation technologies affect water use efficiency, crop yield, irrigation water productivity, and system performance compared with conventional irrigation in agricultural systems?",
+        "keywords": {
+            "population_terms": "agricultural system\nirrigated farm\ncropping system\nfield crop",
+            "intervention_terms": "smart irrigation\nautomated irrigation\nprecision irrigation\nsensor-based irrigation\nIoT irrigation",
+            "comparator_terms": "conventional irrigation\nfarmer-managed irrigation\nmanual irrigation\ncontrol irrigation",
+            "outcome_terms": "water use efficiency\nirrigation water productivity\ncrop yield\nenergy use\nsystem performance",
+            "study_terms": "field trial\ncontrolled experiment\nsimulation validation\nperformance evaluation",
+        },
+        "insight": "Topik ini kuat untuk Teknik Pertanian dan Biosistem karena menghubungkan rekayasa irigasi, sensor/IoT, efisiensi air, dan produktivitas tanaman. Untuk naskah Q-level, bedakan studi uji lapang, simulasi-model, dan prototipe laboratorium agar sintesis tidak terlalu heterogen.",
+    },
+    ("Teknik Pertanian dan Biosistem", "PICO"): {
+        "title": "Solar Drying Technologies for Improving Drying Performance and Quality of Agricultural Products: A Systematic Review",
+        "population": "agricultural products or postharvest commodities",
+        "intervention": "solar drying technologies or hybrid dryers",
+        "comparator": "open sun drying or conventional drying methods",
+        "outcome": "drying rate; energy efficiency; product quality; moisture reduction; microbial safety",
+        "study_design": "laboratory experiments, prototype performance tests, and postharvest trials",
+        "research_question": "Do solar drying technologies improve drying performance, energy efficiency, and product quality of agricultural products compared with open sun drying or conventional drying methods?",
+        "keywords": {
+            "population_terms": "agricultural product\npostharvest commodity\nfood crop\nhorticultural product",
+            "intervention_terms": "solar dryer\nhybrid solar dryer\nindirect solar drying\ngreenhouse dryer",
+            "comparator_terms": "open sun drying\nconventional drying\nhot air drying\ncontrol drying",
+            "outcome_terms": "drying rate\nenergy efficiency\nmoisture content\nproduct quality\nmicrobial safety",
+            "study_terms": "laboratory experiment\nprototype test\nperformance evaluation\npostharvest trial",
+        },
+        "insight": "PICO sesuai bila teknologi pengering dianggap sebagai intervensi rekayasa. Ekstraksi data perlu mencatat tipe dryer, sumber energi tambahan, kapasitas alat, suhu, kelembapan, laju aliran udara, komoditas, serta parameter mutu produk.",
+    },
+    ("Teknik Pertanian dan Biosistem", "PECO"): {
+        "title": "Effects of Agricultural Machinery Traffic Exposure on Soil Compaction and Crop Performance: A Systematic Review",
+        "population": "agricultural soils or cropping systems",
+        "intervention": "agricultural machinery traffic exposure",
+        "comparator": "no traffic, controlled traffic, or low-intensity machinery traffic",
+        "outcome": "soil compaction; bulk density; penetration resistance; crop yield; soil physical quality",
+        "study_design": "field studies, controlled traffic experiments, and observational studies",
+        "research_question": "How does agricultural machinery traffic exposure affect soil compaction, soil physical quality, and crop performance compared with no traffic, controlled traffic, or lower traffic intensity?",
+        "keywords": {
+            "population_terms": "agricultural soil\ncropping system\nfield soil\nfarmland",
+            "intervention_terms": "machinery traffic\ntractor traffic\nwheel traffic\nsoil compaction\ntraffic intensity",
+            "comparator_terms": "no traffic\ncontrolled traffic\nlow traffic intensity\nreference plot",
+            "outcome_terms": "bulk density\npenetration resistance\nsoil compaction\nsoil physical quality\ncrop yield",
+            "study_terms": "field study\ncontrolled traffic experiment\nobservational study\ncomparative study",
+        },
+        "insight": "PECO tepat karena lalu lintas mesin diperlakukan sebagai paparan. Catat jenis mesin, beban gandar, tekanan ban, jumlah lintasan, kadar air tanah, tekstur tanah, kedalaman pengukuran, dan fase pertumbuhan tanaman untuk menjelaskan heterogenitas.",
+    },
+
 }
 
 TARGET_GUIDES = {
@@ -1544,7 +1603,7 @@ def journal_targeting_df():
         risk = "Tinggi"
     elif title_score >= 80 and prisma_ok >= 0.7 and search_ok >= 0.65:
         risk = "Rendah-Sedang"
-    rows.append({"aspect": "Scope fit", "score_or_status": "Perlu cek manual", "insight": "Cocokkan domain, outcome, dan jenis artikel dengan Aims & Scope jurnal target.", "recommendation": "Pilih jurnal agro/peternakan yang rutin menerbitkan systematic review/meta-analysis."})
+    rows.append({"aspect": "Scope fit", "score_or_status": "Perlu cek manual", "insight": "Cocokkan domain, outcome, dan jenis artikel dengan Aims & Scope jurnal target.", "recommendation": "Pilih jurnal agro/peternakan/teknik pertanian dan biosistem yang rutin menerbitkan systematic review/meta-analysis."})
     rows.append({"aspect": "Methodological readiness", "score_or_status": f"{prisma_ok*100:.0f}% PRISMA ready", "insight": "Kesiapan metode ditentukan oleh PRISMA, PRISMA-S, risk of bias, dan extraction.", "recommendation": "Lengkapi item PRISMA yang masih Perlu revisi."})
     rows.append({"aspect": "Search transparency", "score_or_status": f"{search_ok*100:.0f}% PRISMA-S ready", "insight": "Search strategy harus bisa direplikasi.", "recommendation": "Simpan search string per database dan tanggal pencarian."})
     rows.append({"aspect": "Evidence strength", "score_or_status": evidence["strength"], "insight": f"Average quality {evidence['avg_quality']:.2f}/8; dominant effect {evidence['dominant_effect']}.", "recommendation": "Gunakan certainty/risk of bias untuk menahan klaim berlebihan."})
@@ -1588,7 +1647,7 @@ def build_manuscript_markdown():
 Background: Evidence regarding {p.get('intervention','the intervention/exposure')} for {p.get('population','the target population')} remains fragmented across studies. Objective: This systematic review aimed to synthesize evidence on {p.get('outcome','main outcomes')} using the {p.get('framework','PICOS')} framework. Methods: {p.get('research_question','The research question has not been defined yet.')} Records were screened using predefined inclusion and exclusion criteria. Results: The current database contains {counts['records_database']} records, {counts['duplicates_removed']} duplicates removed, {counts['full_text_assessed']} full-text articles assessed, and {counts['studies_included']} studies included. Conclusion: The evidence strength is currently {evidence['strength']}. Claims should be adjusted to the final quality and risk of bias assessment.
 
 ## 1. Introduction
-The topic of {p.get('intervention','intervention/exposure')} in {p.get('population','target population')} is relevant for agro, livestock, food, aquaculture, and environmental research because it is linked to productivity, sustainability, and evidence-based decision making. However, individual studies often differ in design, sample size, treatment dose, duration, comparator, and outcome measures. A systematic review is therefore needed to synthesize the available evidence transparently.
+The topic of {p.get('intervention','intervention/exposure')} in {p.get('population','target population')} is relevant for agro, livestock, agricultural engineering and biosystems, food, aquaculture, and environmental research because it is linked to productivity, sustainability, and evidence-based decision making. However, individual studies often differ in design, sample size, treatment dose, duration, comparator, and outcome measures. A systematic review is therefore needed to synthesize the available evidence transparently.
 
 ### Research Gap and Novelty
 {gaps.iloc[-1]['gap_or_insight'] if not gaps.empty else 'The novelty statement needs to be refined after data extraction.'}
@@ -1658,7 +1717,7 @@ def make_cover_letter_markdown():
 
 Dear Editor,
 
-We are pleased to submit our manuscript entitled \"{p.get('title','[Manuscript Title]')}\" for consideration in your journal. This manuscript presents a systematic review in the field of {p.get('domain','[domain]')} focusing on {p.get('intervention','[intervention/exposure]')} and {p.get('outcome','[outcome]')} in {p.get('population','[population]')}.
+We are pleased to submit our manuscript entitled "{p.get('title','[Manuscript Title]')}" for consideration in your journal. This manuscript presents a systematic review in the field of {p.get('domain','[domain]')} focusing on {p.get('intervention','[intervention/exposure]')} and {p.get('outcome','[outcome]')} in {p.get('population','[population]')}.
 
 The review was structured using the {p.get('framework','PICOS/PECO')} framework and aims to answer the question: {p.get('research_question','[research question]')}
 
@@ -2306,7 +2365,7 @@ def page_workflow():
     )
 
     steps = [
-        ("1", "Judul & PICOS/PECO", "Masukkan judul, bidang, target jurnal, dan komponen PICOS/PECO.", "Output: skor kesiapan judul, kelemahan, rekomendasi judul, research question."),
+        ("1", "Judul & PICOS/PECO", "Masukkan judul, bidang termasuk Teknik Pertanian dan Biosistem, target jurnal, dan komponen PICOS/PECO.", "Output: skor kesiapan judul, kelemahan, rekomendasi judul, research question."),
         ("2", "Protocol & Search Strategy", "Rapikan protocol, kriteria inklusi-eksklusi, dan Boolean search.", "Output: protocol awal dan search string yang bisa dipakai di Scopus/WoS/database lain."),
         ("3", "Import Artikel", "Unggah hasil ekspor XLSX/XLS/RIS dari database.", "Output: data artikel yang sudah dinormalisasi dan dideduplikasi."),
         ("4", "Screening", "Gunakan skor relevansi PICOS sebagai bantuan, lalu tetapkan keputusan Include/Maybe/Exclude.", "Output: daftar artikel eligible untuk full-text."),
@@ -2354,7 +2413,7 @@ def page_title_protocol():
     with st.form("project_form"):
         p["title"] = st.text_area("Judul sementara", value=p.get("title", ""), height=80)
         c1, c2, c3, c4 = st.columns(4)
-        domains = ["Peternakan", "Agro/Agronomi", "Perikanan/Akuakultur", "Pangan", "Lingkungan", "Otomatis"]
+        domains = ["Peternakan", "Agro/Agronomi", "Teknik Pertanian dan Biosistem", "Perikanan/Akuakultur", "Pangan", "Lingkungan", "Otomatis"]
         p["domain"] = c1.selectbox("Bidang", domains, index=domains.index(p.get("domain", "Peternakan")) if p.get("domain", "Peternakan") in domains else 0)
         p["framework"] = c2.selectbox("Kerangka", ["PICOS", "PECO", "PICO"], index=["PICOS", "PECO", "PICO"].index(p.get("framework", "PICOS")) if p.get("framework", "PICOS") in ["PICOS", "PECO", "PICO"] else 0)
         p["target_level"] = c3.selectbox("Target", ["Q1/Q2", "Q2/Q3", "Scopus awal", "Sinta/Kampus"], index=["Q1/Q2", "Q2/Q3", "Scopus awal", "Sinta/Kampus"].index(p.get("target_level", "Q1/Q2")) if p.get("target_level", "Q1/Q2") in ["Q1/Q2", "Q2/Q3", "Scopus awal", "Sinta/Kampus"] else 0)

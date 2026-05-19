@@ -1,8 +1,8 @@
-# Agro Systematic Review Builder
+# Agro & Biosystems Systematic Review Builder
 
-**Q-Level Manuscript Builder + Save & Resume + Personal AI Model Selector Edition**
+**Q-Level Manuscript Builder + Save & Resume + Personal AI Model Selector + Biosystems Edition**
 
-Aplikasi Streamlit ini dirancang untuk membantu peneliti menyusun systematic review bidang agro, peternakan, perikanan/akuakultur, pangan, dan lingkungan secara lebih terarah menuju standar naskah jurnal bereputasi.
+Aplikasi Streamlit ini dirancang untuk membantu peneliti menyusun systematic review bidang agro, peternakan, teknik pertanian dan biosistem, perikanan/akuakultur, pangan, dan lingkungan secara lebih terarah menuju standar naskah jurnal bereputasi.
 
 ## Fitur Utama
 
@@ -19,14 +19,22 @@ Aplikasi Streamlit ini dirancang untuk membantu peneliti menyusun systematic rev
 - Rekomendasi judul yang lebih kuat.
 - Generator research question.
 - Generator PICOS, PICO, atau PECO.
-- Contoh dinamis sesuai bidang dan framework.
+- Contoh dinamis sesuai bidang dan framework, termasuk Teknik Pertanian dan Biosistem.
 
 ### 3. Protocol & Search Strategy
 - Inclusion criteria otomatis.
 - Exclusion criteria otomatis.
 - Search terms otomatis.
 - Boolean search strategy otomatis.
-- Rekomendasi database berdasarkan bidang.
+- Rekomendasi database berdasarkan bidang, termasuk ASABE Technical Library dan IEEE Xplore untuk topik rekayasa/sensor/IoT bila relevan.
+
+#### Bidang Teknik Pertanian dan Biosistem
+Sistem sekarang mendukung topik systematic review seperti smart irrigation, precision agriculture, sensor/IoT pertanian, remote sensing, mekanisasi pertanian, soil compaction akibat lalu lintas mesin, controlled traffic farming, greenhouse technology, postharvest engineering, solar/hybrid dryer, efisiensi energi, dan renewable energy untuk sistem pertanian.
+
+Contoh otomatis tersedia untuk:
+- **PICOS**: smart irrigation technologies terhadap water use efficiency dan crop yield;
+- **PICO**: solar drying technologies terhadap drying performance dan mutu produk;
+- **PECO**: paparan agricultural machinery traffic terhadap soil compaction dan crop performance.
 
 ### 4. Import dan Screening Artikel
 - Mendukung XLSX, XLS, dan RIS.
