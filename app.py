@@ -1942,9 +1942,31 @@ def clear_personal_api_key():
             del st.session_state[key]
 
 
+def sanitize_api_key(raw_key: str) -> str:
+    """Accept raw API keys or pasted Authorization headers and return only the token.
+
+    Users sometimes paste `Bearer sk-...` or `Authorization: Bearer sk-...`.
+    If we prepend Bearer again, providers reject it as an invalid key.
+    This sanitizer prevents the common `Bearer Bearer ...` problem without
+    storing or displaying the key.
+    """
+    value = str(raw_key or "").strip().strip('"').strip("'")
+    if not value:
+        return ""
+    # Allow users to paste the full header line.
+    value = re.sub(r"^Authorization\s*:\s*", "", value, flags=re.I).strip()
+    value = re.sub(r"^Bearer\s+", "", value, flags=re.I).strip()
+    # Keep the first non-empty line only, in case the pasted text contains notes.
+    for line in value.splitlines():
+        line = line.strip()
+        if line:
+            return line
+    return value
+
+
 def get_personal_api_key() -> str:
     """Read the optional personal API key from session state without persisting it."""
-    return str(st.session_state.get("personal_openai_api_key", "") or "").strip()
+    return sanitize_api_key(st.session_state.get("personal_openai_api_key", ""))
 
 
 def normalize_api_base_url(api_base: str) -> str:
@@ -1988,8 +2010,9 @@ def build_bearer_headers(api_key: str, model: str | None = None) -> dict:
     a request header. The app therefore sends the selected model in the JSON body
     and, when available, also in a safe `model` header for compatibility.
     """
+    safe_key = sanitize_api_key(api_key)
     headers = {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {safe_key}",
         "Content-Type": "application/json",
     }
     if model:
@@ -2437,6 +2460,7 @@ def call_openai_responses_api(api_key: str, model: str, user_prompt: str, api_ba
         ],
         "temperature": 0.2,
         "max_tokens": 2200,
+        "stream": False,
     }
 
     try:
@@ -2449,7 +2473,12 @@ def call_openai_responses_api(api_key: str, model: str, user_prompt: str, api_ba
         if response.status_code >= 400:
             detail = compact_api_error(response)
             if response.status_code in (401, 403):
-                return False, "API key tidak valid, sudah dicabut, atau tidak memiliki akses model/API base yang dipilih."
+                return False, (
+                    f"Server menolak otorisasi ({response.status_code}). Ini belum tentu berarti API key dicabut; "
+                    f"penyebabnya bisa format key salah, key ditempel bersama kata Bearer/Authorization, "
+                    f"model tidak tersedia untuk key tersebut, atau API base tidak cocok. "
+                    f"Endpoint: {url}. Model: {model}. Detail server: {detail}"
+                )
             if response.status_code == 404:
                 return False, f"Endpoint atau model tidak ditemukan. Pastikan API Base benar dan mendukung {url}. Detail: {detail}"
             if response.status_code == 429:
@@ -2489,6 +2518,22 @@ def call_openai_responses_api(api_key: str, model: str, user_prompt: str, api_ba
         return False, f"Gagal terhubung ke API base {base}: {exc}"
     except Exception as exc:
         return False, f"Gagal membuat AI insight: {exc}"
+
+
+def test_chat_completion_connection(api_key: str, model: str, api_base: str | None = None) -> tuple[bool, str]:
+    """Send a tiny chat completion request to verify API key, model, and endpoint together."""
+    if not api_key:
+        return False, "API key belum diisi."
+    ok, result = call_openai_responses_api(
+        api_key=api_key,
+        model=model or ECONOMY_MODEL_FALLBACK,
+        user_prompt="Balas hanya dengan kata OK jika koneksi berhasil.",
+        api_base=api_base or get_personal_api_base_url(),
+    )
+    if ok:
+        preview = str(result).strip().replace("\n", " ")[:200]
+        return True, f"Koneksi Chat Completions berhasil. Respons ringkas: {preview}"
+    return False, result
 
 
 def make_ai_task_prompt(task: str) -> str:
@@ -2640,7 +2685,7 @@ def render_sidebar():
             "API Key pribadi / Bearer token",
             type="password",
             key="personal_openai_api_key",
-            help="Opsional. API key hanya dipakai selama sesi ini dan tidak disimpan ke project state, ZIP export, XLSX, DOCX, atau Markdown.",
+            help="Opsional. Boleh isi raw key saja, atau paste `Bearer ...` / `Authorization: Bearer ...`; sistem akan membersihkan formatnya. API key tidak disimpan ke project state, ZIP, XLSX, DOCX, atau Markdown.",
         )
         st.text_input(
             "API Base URL",
@@ -2703,6 +2748,17 @@ def render_sidebar():
             ai_cfg["model"] = effective_model
             ai_cfg["selected_model_source"] = source
             st.caption(f"Model terpilih otomatis: `{effective_model}` ({source}).")
+
+        if ai_cfg.get("mode") == "Online AI Mode" and api_key:
+            current_model_for_test, _ = get_effective_ai_model(api_key)
+            if st.button("🧪 Tes Chat Completions", use_container_width=True):
+                with st.spinner("Menguji koneksi endpoint, model, dan API key..."):
+                    ok, msg = test_chat_completion_connection(api_key, current_model_for_test, get_personal_api_base_url())
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+                    st.info("Coba pastikan API Base tetap `https://api.slashai.my.id`, model memakai awalan `slashai/`, dan field API key tidak berisi spasi/teks tambahan.")
 
         if ai_cfg.get("mode") == "Online AI Mode" and api_key:
             st.success("Online AI aktif untuk sesi ini.")

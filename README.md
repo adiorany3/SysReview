@@ -275,3 +275,25 @@ Versi ini menambahkan logika agar pilihan **Bidang** dan **Kerangka** menjadi pe
 - Protocol, Screening Score, Quality Assessment, Data Extraction, Insight, dan Export.
 
 Fitur ini dapat dikendalikan melalui toggle **Otomatis isi contoh sesuai bidang/kerangka** pada Langkah 1 atau **Auto-isi contoh saat bidang berubah** di sidebar. Jika peneliti sudah mengedit manual dan tidak ingin datanya tertimpa contoh, matikan toggle tersebut. Peneliti juga tetap dapat memakai tombol **Terapkan contoh bidang ini sekarang** untuk mengisi ulang contoh kapan saja.
+
+## Perbaikan troubleshooting API key ditolak
+
+Pada versi ini, field API key sudah dibuat lebih toleran. Pengguna boleh menempelkan salah satu format berikut:
+
+```text
+sk-xxxx
+Bearer sk-xxxx
+Authorization: Bearer sk-xxxx
+```
+
+Aplikasi akan membersihkan awalan `Bearer` atau `Authorization: Bearer` secara otomatis agar tidak terjadi error `Bearer Bearer ...` pada header request.
+
+Jika muncul error otorisasi 401/403, aplikasi sekarang menampilkan detail yang lebih jelas. Penyebabnya tidak selalu API key dicabut; bisa juga karena model tidak tersedia untuk key tersebut, endpoint/API Base tidak cocok, quota/saldo bermasalah, atau provider menolak model tertentu. Gunakan tombol **Tes Chat Completions** di sidebar untuk menguji kombinasi API Base, model, dan API key secara langsung melalui `POST /v1/chat/completions`.
+
+Rekomendasi pengaturan SlashAI:
+
+```text
+API Base URL: https://api.slashai.my.id
+Model hemat: slashai/gpt-5.5-instant
+Model kualitas tinggi: slashai/gpt-5.5
+```
