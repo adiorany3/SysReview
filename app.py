@@ -1,6 +1,7 @@
 import json
 import re
 import zipfile
+from copy import copy
 from datetime import date
 from io import BytesIO
 
@@ -15,7 +16,7 @@ st.set_page_config(
 )
 
 APP_TITLE = "Agro Systematic Review Builder"
-APP_VERSION = "Final Integrated Insight Edition"
+APP_VERSION = "Final Integrated Insight Edition - XLSX Workflow"
 
 ARTICLE_COLUMNS = [
     "id", "title", "authors", "year", "journal", "doi", "country", "study_design",
@@ -367,13 +368,35 @@ def parse_ris(text: str):
 
 def read_uploaded_file(uploaded_file):
     name = uploaded_file.name.lower()
-    if name.endswith(".csv"):
-        return pd.read_csv(uploaded_file)
     if name.endswith(".xlsx") or name.endswith(".xls"):
         return pd.read_excel(uploaded_file)
     if name.endswith(".ris"):
         return parse_ris(uploaded_file.getvalue().decode("utf-8", errors="ignore"))
-    raise ValueError("Format belum didukung. Gunakan CSV, XLSX, atau RIS.")
+    raise ValueError("Format belum didukung. Gunakan XLSX, XLS, atau RIS.")
+
+
+def df_to_xlsx_bytes(df: pd.DataFrame, sheet_name: str = "Data") -> bytes:
+    """Convert dataframe to a readable Excel workbook for Streamlit download/export."""
+    output = BytesIO()
+    safe_sheet = re.sub(r"[\\/*?:\[\]]", "_", sheet_name)[:31] or "Data"
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        export_df = df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame(df)
+        export_df.to_excel(writer, index=False, sheet_name=safe_sheet)
+        worksheet = writer.sheets[safe_sheet]
+        worksheet.freeze_panes = "A2"
+        for cell in worksheet[1]:
+            font = copy(cell.font)
+            font.bold = True
+            cell.font = font
+            cell.alignment = cell.alignment.copy(horizontal="center", vertical="center", wrap_text=True)
+        for column_cells in worksheet.columns:
+            values = [str(c.value) if c.value is not None else "" for c in column_cells]
+            max_len = max([len(v) for v in values] + [8])
+            worksheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_len + 2, 12), 42)
+        for row in worksheet.iter_rows():
+            for cell in row:
+                cell.alignment = cell.alignment.copy(vertical="top", wrap_text=True)
+    return output.getvalue()
 
 
 def flag_duplicates(df: pd.DataFrame):
@@ -726,9 +749,9 @@ def make_export_zip():
         z.writestr("protocol_systematic_review.md", make_protocol_markdown())
         z.writestr("methods_template.md", make_methods_template())
         z.writestr("evidence_insight_report.md", build_insight_report())
-        z.writestr("screening_results.csv", st.session_state.articles.to_csv(index=False))
-        z.writestr("quality_assessment.csv", st.session_state.quality.to_csv(index=False))
-        z.writestr("data_extraction.csv", st.session_state.extraction.to_csv(index=False))
+        z.writestr("screening_results.xlsx", df_to_xlsx_bytes(st.session_state.articles, "Screening Results"))
+        z.writestr("quality_assessment.xlsx", df_to_xlsx_bytes(st.session_state.quality, "Quality Assessment"))
+        z.writestr("data_extraction.xlsx", df_to_xlsx_bytes(st.session_state.extraction, "Data Extraction"))
         z.writestr("project_state.json", json.dumps({
             "project": st.session_state.project,
             "criteria": st.session_state.criteria,
@@ -739,8 +762,15 @@ def make_export_zip():
     return mem.getvalue()
 
 
-def download_df_button(label, df, filename):
-    st.download_button(label, df.to_csv(index=False).encode("utf-8"), filename, "text/csv", use_container_width=True)
+def download_df_button(label, df, filename, sheet_name="Data"):
+    xlsx_name = filename.rsplit(".", 1)[0] + ".xlsx"
+    st.download_button(
+        label,
+        df_to_xlsx_bytes(df, sheet_name),
+        xlsx_name,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
 
 
 def render_sidebar():
@@ -767,7 +797,7 @@ def page_workflow():
     steps = [
         ("1", "Judul & PICOS/PECO", "Masukkan judul, bidang, target jurnal, dan komponen PICOS/PECO.", "Output: skor kesiapan judul, kelemahan, rekomendasi judul, research question."),
         ("2", "Protocol & Search Strategy", "Rapikan protocol, kriteria inklusi-eksklusi, dan Boolean search.", "Output: protocol awal dan search string yang bisa dipakai di Scopus/WoS/database lain."),
-        ("3", "Import Artikel", "Unggah hasil ekspor CSV/XLSX/RIS dari database.", "Output: data artikel yang sudah dinormalisasi dan dideduplikasi."),
+        ("3", "Import Artikel", "Unggah hasil ekspor XLSX/RIS dari database.", "Output: data artikel yang sudah dinormalisasi dan dideduplikasi."),
         ("4", "Screening", "Gunakan skor relevansi PICOS sebagai bantuan, lalu tetapkan keputusan Include/Maybe/Exclude.", "Output: daftar artikel eligible untuk full-text."),
         ("5", "PRISMA", "Pantau jumlah record dari identifikasi sampai studi include final.", "Output: angka PRISMA untuk naskah."),
         ("6", "Quality Assessment", "Nilai kualitas studi berdasarkan checklist.", "Output: kategori Low/Moderate/High."),
@@ -882,11 +912,17 @@ def page_protocol_search():
 
 def page_import_screening():
     st.header("3-4. Import Artikel dan Screening Terintegrasi")
-    st.write("Unggah hasil ekspor dari database dalam format CSV, XLSX, atau RIS. Sistem akan menormalisasi kolom, mendeteksi duplikasi, dan memberi skor relevansi berdasarkan PICOS/PECO.")
-    sample_path = "data/sample_articles.csv"
+    st.write("Unggah hasil ekspor dari database dalam format XLSX atau RIS. Sistem akan menormalisasi kolom, mendeteksi duplikasi, dan memberi skor relevansi berdasarkan PICOS/PECO.")
+    sample_path = "data/sample_articles.xlsx"
     with open(sample_path, "rb") as f:
-        st.download_button("Download template/sample CSV", f.read(), "sample_articles.csv", "text/csv", use_container_width=True)
-    upload = st.file_uploader("Upload file artikel", type=["csv", "xlsx", "xls", "ris"])
+        st.download_button(
+            "Download template/sample XLSX",
+            f.read(),
+            "sample_articles.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+    upload = st.file_uploader("Upload file artikel", type=["xlsx", "xls", "ris"])
     col1, col2 = st.columns(2)
     if upload is not None:
         try:
@@ -902,7 +938,7 @@ def page_import_screening():
         except Exception as e:
             st.error(f"Gagal membaca file: {e}")
     if col2.button("Muat sample data", use_container_width=True):
-        df = pd.read_csv(sample_path)
+        df = pd.read_excel(sample_path)
         df = normalize_columns(df)
         df = flag_duplicates(df)
         df = apply_relevance_scoring(df)
@@ -942,7 +978,7 @@ def page_import_screening():
         st.session_state.articles = apply_relevance_scoring(st.session_state.articles)
         sync_quality_extraction()
         st.success("Screening disimpan. PRISMA, Quality Assessment, dan Data Extraction sudah disinkronkan.")
-    download_df_button("Download screening_results.csv", st.session_state.articles, "screening_results.csv")
+    download_df_button("Download screening_results.xlsx", st.session_state.articles, "screening_results.xlsx")
 
 
 def page_prisma_quality():
@@ -975,7 +1011,7 @@ Included
 Studies included in final synthesis: {counts['studies_included']}
 """, language="text")
     prisma_df = pd.DataFrame([counts])
-    download_df_button("Download prisma_counts.csv", prisma_df, "prisma_counts.csv")
+    download_df_button("Download prisma_counts.xlsx", prisma_df, "prisma_counts.xlsx")
 
     st.subheader("Quality Assessment")
     sync_quality_extraction()
@@ -1004,7 +1040,7 @@ Studies included in final synthesis: {counts['studies_included']}
         st.success("Quality assessment disimpan.")
     if not st.session_state.quality.empty:
         st.bar_chart(st.session_state.quality["quality_category"].value_counts())
-    download_df_button("Download quality_assessment.csv", st.session_state.quality, "quality_assessment.csv")
+    download_df_button("Download quality_assessment.xlsx", st.session_state.quality, "quality_assessment.xlsx")
 
 
 def page_extraction():
@@ -1037,7 +1073,7 @@ def page_extraction():
         effects = edited["effect_direction"].replace("", np.nan).dropna().value_counts()
         if not effects.empty:
             st.bar_chart(effects)
-    download_df_button("Download data_extraction.csv", st.session_state.extraction, "data_extraction.csv")
+    download_df_button("Download data_extraction.xlsx", st.session_state.extraction, "data_extraction.xlsx")
 
 
 def page_insight_export():

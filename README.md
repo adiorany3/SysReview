@@ -16,7 +16,7 @@ Aplikasi Streamlit untuk membantu peneliti bidang agro, peternakan, pangan, agro
    - Rekomendasi database dan quality assessment sesuai bidang.
 
 3. **Import & Screening**
-   - Mendukung CSV, XLSX, dan RIS.
+   - Mendukung XLSX dan RIS; seluruh template dan export tabel memakai XLSX agar mudah dibaca di Microsoft Excel.
    - Normalisasi kolom otomatis.
    - Deteksi duplikasi DOI/judul.
    - Skor relevansi PICOS/PECO.
@@ -41,11 +41,11 @@ Aplikasi Streamlit untuk membantu peneliti bidang agro, peternakan, pangan, agro
    - Protocol markdown.
    - Methods template.
    - Insight report.
-   - Screening CSV.
-   - Quality CSV.
-   - Extraction CSV.
+   - Screening XLSX.
+   - Quality XLSX.
+   - Extraction XLSX.
    - Project state JSON.
-   - Semua hasil bisa diekspor sebagai ZIP dari aplikasi.
+   - Semua hasil bisa diekspor sebagai ZIP dari aplikasi dalam format XLSX agar mudah dibaca dan diedit di Microsoft Excel.
 
 ## Cara menjalankan lokal
 
@@ -67,7 +67,7 @@ streamlit run app.py
 1. Buka **Panduan Workflow**.
 2. Isi **Judul & PICOS/PECO**.
 3. Rapikan **Protocol & Search**.
-4. Import artikel dari database.
+4. Import artikel dari database menggunakan template XLSX atau file RIS.
 5. Lakukan screening.
 6. Pantau PRISMA dan isi quality assessment.
 7. Isi data extraction.
