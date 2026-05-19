@@ -4,9 +4,29 @@ Aplikasi Streamlit untuk membantu peneliti bidang agro, peternakan, pangan, agro
 
 ## Versi ini
 
-**Enhanced Examples & Guidance Edition**
+**Auto-Sync Integrated Workflow Edition**
 
-Versi ini menambahkan contoh dan informasi otomatis sesuai pilihan pengguna. Ketika peneliti memilih bidang dan kerangka PICO/PICOS/PECO, sistem menampilkan contoh judul, komponen review, research question, keyword, Boolean search, database, quality assessment, dan insight naskah yang sesuai.
+Versi ini memperkuat integrasi antarmenu. Isi dari menu sebelumnya menjadi dasar otomatis untuk menu berikutnya. Ketika peneliti mengubah judul, bidang, kerangka PICO/PICOS/PECO, population, intervention/exposure, comparator, outcome, atau study design, sistem dapat langsung memperbarui Protocol, Search Strategy, Screening Score, PRISMA, Quality Assessment, Data Extraction, Evidence Insight Report, dan Export Package.
+
+## Integrasi otomatis antarmenu
+
+Alur integrasi sistem:
+
+1. **Judul & PICOS/PECO** menjadi sumber utama proyek.
+2. Sistem otomatis membuat atau memperbarui **Research Question**.
+3. Sistem otomatis membentuk **Inclusion Criteria** dan **Exclusion Criteria**.
+4. Sistem otomatis menyusun **Search Terms** dan **Boolean Search String**.
+5. Search terms otomatis dipakai untuk menghitung **PICOS/PECO Relevance Score** pada artikel.
+6. Hasil screening otomatis mengubah angka **PRISMA**.
+7. Artikel yang masuk tahap include otomatis muncul di **Quality Assessment** dan **Data Extraction**.
+8. Quality Assessment dan Data Extraction otomatis dibaca oleh **Evidence Insight Report**.
+9. Semua hasil otomatis masuk ke **Export ZIP**.
+
+Di sidebar tersedia:
+
+- **Auto-sync antarmenu**: mengaktifkan sinkronisasi otomatis.
+- **Timpa isi otomatis**: memperbarui ulang research question, criteria, dan search terms dari menu sebelumnya. Matikan opsi ini apabila ingin mempertahankan edit manual.
+- **Sinkronkan semua modul**: tombol untuk menyamakan seluruh menu dengan data terbaru.
 
 ## Fitur utama
 
@@ -24,24 +44,27 @@ Versi ini menambahkan contoh dan informasi otomatis sesuai pilihan pengguna. Ket
    - Contoh Boolean search dan keyword.
    - Insight kelemahan, kekuatan, serta catatan untuk target Q1/Q2, Q2/Q3, Scopus awal, dan Sinta/Kampus.
 
-3. **Protocol & Search Strategy**
-   - Kriteria inklusi-eksklusi.
-   - Boolean search string otomatis.
-   - Rekomendasi database dan quality assessment sesuai bidang.
+3. **Protocol & Search Strategy Terintegrasi**
+   - Research question mengikuti menu Judul & PICOS/PECO.
+   - Kriteria inklusi-eksklusi otomatis menyesuaikan framework, tahun, bahasa, scope, dan study design.
+   - Boolean search string otomatis mengikuti population, intervention/exposure, comparator, outcome, dan study design.
+   - Tersedia tombol untuk mengambil ulang isi otomatis dari menu sebelumnya.
 
 4. **Import & Screening**
    - Mendukung XLSX, XLS, dan RIS.
    - Normalisasi kolom otomatis.
    - Deteksi duplikasi DOI/judul.
-   - Skor relevansi PICOS/PECO.
+   - Skor relevansi PICOS/PECO otomatis mengikuti Search Strategy aktif.
    - Saran screening otomatis: Include, Maybe, Exclude.
 
 5. **PRISMA & Quality Assessment**
    - Ringkasan PRISMA otomatis berdasarkan screening.
+   - Artikel include otomatis masuk ke tabel quality assessment.
    - Checklist quality assessment.
    - Kategori kualitas Low, Moderate, High.
 
 6. **Data Extraction**
+   - Artikel include otomatis masuk ke tabel data extraction.
    - Ekstraksi outcome, effect direction, effect size, p-value, finding, limitation, dan implication.
 
 7. **Evidence Insight Report**
@@ -81,15 +104,14 @@ streamlit run app.py
 ## Workflow penggunaan
 
 1. Buka **Panduan Workflow**.
-2. Isi **Judul & PICOS/PECO**.
-3. Baca contoh dan informasi sesuai pilihan bidang/framework.
-4. Terapkan contoh apabila ingin memakai template awal.
-5. Rapikan **Protocol & Search**.
+2. Aktifkan **Auto-sync antarmenu** di sidebar.
+3. Isi **Judul & PICOS/PECO**.
+4. Simpan dan analisis. Menu Protocol & Search akan otomatis menyesuaikan.
+5. Buka **Protocol & Search** untuk mengecek research question, inclusion-exclusion, dan Boolean search.
 6. Import artikel dari database memakai XLSX/XLS/RIS.
-7. Lakukan screening.
-8. Pantau PRISMA dan isi quality assessment.
-9. Isi data extraction.
-10. Buka Insight & Export untuk melihat laporan insight dan mengunduh seluruh hasil.
+7. Lakukan screening. PRISMA otomatis berubah.
+8. Isi quality assessment dan data extraction untuk artikel include.
+9. Buka Insight & Export untuk melihat laporan insight dan mengunduh seluruh hasil.
 
 ## Catatan penting
 

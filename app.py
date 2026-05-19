@@ -1,7 +1,7 @@
 import json
 import re
 import zipfile
-from datetime import date
+from datetime import date, datetime
 from io import BytesIO
 
 import numpy as np
@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 APP_TITLE = "Agro Systematic Review Builder"
-APP_VERSION = "Enhanced Examples & Guidance Edition"
+APP_VERSION = "Auto-Sync Integrated Workflow Edition"
 
 ARTICLE_COLUMNS = [
     "id", "title", "authors", "year", "journal", "doi", "country", "study_design",
@@ -439,6 +439,11 @@ def init_state():
             "studies_included": 0,
         },
         "notes": "",
+        "sync_config": {
+            "auto_sync": True,
+            "overwrite_generated": True,
+            "last_sync": "Belum pernah sinkron",
+        },
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -624,6 +629,96 @@ def analyze_title(project: dict):
 
 
 
+def make_auto_research_question(project: dict):
+    """Generate a concise research question from the current framework fields."""
+    framework = project.get("framework", "PICOS")
+    population = project.get("population", "target population").strip() or "target population"
+    intervention = project.get("intervention", "intervention/exposure").strip() or "intervention/exposure"
+    comparator = project.get("comparator", "comparator/control").strip() or "comparator/control"
+    outcome = project.get("outcome", "main outcomes").strip() or "main outcomes"
+    study_design = project.get("study_design", "eligible studies").strip() or "eligible studies"
+
+    if framework == "PECO":
+        return f"How does exposure to {intervention} affect {outcome} in {population} compared with {comparator}?"
+    if framework == "PICOS":
+        return f"In {study_design}, how does {intervention} affect {outcome} in {population} compared with {comparator}?"
+    return f"How does {intervention} affect {outcome} in {population} compared with {comparator}?"
+
+
+def make_auto_criteria(project: dict):
+    """Create inclusion-exclusion criteria that follow the previous menu choices."""
+    framework = project.get("framework", "PICOS")
+    population = project.get("population", "the defined population/problem").strip() or "the defined population/problem"
+    intervention = project.get("intervention", "the defined intervention/exposure").strip() or "the defined intervention/exposure"
+    comparator = project.get("comparator", "the defined comparator").strip() or "the defined comparator"
+    outcome = project.get("outcome", "the defined outcome").strip() or "the defined outcome"
+    study_design = project.get("study_design", "eligible empirical study designs").strip() or "eligible empirical study designs"
+    year_range = project.get("year_range", "selected year range")
+    language = project.get("language", "selected languages")
+    scope = project.get("geographical_scope", "Global")
+
+    exposure_or_intervention = "exposure" if framework == "PECO" else "intervention"
+    inclusion = (
+        f"Peer-reviewed empirical studies published within {year_range}; articles written in {language}; "
+        f"studies involving {population}; studies evaluating the {exposure_or_intervention} of {intervention}; "
+        f"studies using {comparator} as comparator/control where applicable; studies reporting at least one outcome related to {outcome}; "
+        f"eligible study designs: {study_design}; geographical scope: {scope}."
+    )
+    exclusion = (
+        "Duplicated records; narrative reviews, editorials, opinion papers, conference abstracts without full data, and non-peer-reviewed sources; "
+        f"studies outside the population/problem ({population}); studies not evaluating {intervention}; studies without relevant comparator/control where required; "
+        f"studies not reporting {outcome}; studies with inaccessible full text or insufficient data for extraction; studies outside {year_range}."
+    )
+    return {"inclusion": inclusion, "exclusion": exclusion}
+
+
+def sync_downstream_from_project(reason="manual"):
+    """Synchronize all downstream modules from the current project fields.
+
+    Langkah 1 menjadi sumber utama. Fungsi ini membuat Protocol, Search Strategy,
+    Screening Score, PRISMA, Quality Assessment, Data Extraction, Insight, dan Export
+    membaca dasar yang sama.
+    """
+    p = st.session_state.project
+    config = st.session_state.get("sync_config", {"auto_sync": True, "overwrite_generated": True})
+    overwrite = bool(config.get("overwrite_generated", True))
+
+    if overwrite or not str(p.get("research_question", "")).strip():
+        p["research_question"] = make_auto_research_question(p)
+    if overwrite or not st.session_state.get("criteria"):
+        st.session_state.criteria = make_auto_criteria(p)
+    elif not st.session_state.criteria.get("inclusion") or not st.session_state.criteria.get("exclusion"):
+        st.session_state.criteria.update(make_auto_criteria(p))
+    if overwrite or not st.session_state.get("terms"):
+        st.session_state.terms = suggest_terms_from_project(p)
+    else:
+        # Tambahkan istilah inti dari menu sebelumnya tanpa menghapus istilah manual.
+        suggested = suggest_terms_from_project(p)
+        merged = {}
+        for key in ["population_terms", "intervention_terms", "comparator_terms", "outcome_terms", "study_terms"]:
+            merged[key] = "\n".join(unique_keep_order(split_terms(st.session_state.terms.get(key, "")) + split_terms(suggested.get(key, ""))))
+        st.session_state.terms = merged
+
+    if "articles" in st.session_state and not st.session_state.articles.empty:
+        st.session_state.articles = flag_duplicates(st.session_state.articles)
+        st.session_state.articles = apply_relevance_scoring(st.session_state.articles)
+        sync_quality_extraction()
+    st.session_state.sync_config["last_sync"] = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ({reason})"
+
+
+def sync_if_auto(reason="auto"):
+    config = st.session_state.get("sync_config", {})
+    if config.get("auto_sync", True):
+        sync_downstream_from_project(reason=reason)
+
+
+def render_sync_status():
+    config = st.session_state.get("sync_config", {})
+    last_sync = config.get("last_sync", "Belum pernah sinkron")
+    st.caption(f"Status sinkronisasi: {last_sync}. Protocol, search, screening score, PRISMA, quality, extraction, insight, dan export mengikuti data dari langkah sebelumnya.")
+
+
+
 def get_selected_example(project: dict):
     domain = infer_domain(project)
     framework = project.get("framework", "PICOS")
@@ -645,6 +740,9 @@ def apply_example_to_project(example: dict, domain: str, framework: str):
         "study_design": example.get("study_design", ""),
     })
     st.session_state.terms = example.get("keywords", suggest_terms_from_project(st.session_state.project))
+    st.session_state.project["research_question"] = example.get("research_question", make_auto_research_question(st.session_state.project))
+    st.session_state.criteria = make_auto_criteria(st.session_state.project)
+    sync_downstream_from_project(reason="contoh diterapkan")
 
 
 def render_framework_domain_guidance(project: dict):
@@ -1168,6 +1266,8 @@ def make_protocol_markdown():
 {c.get('exclusion','')}
 
 ## Strategi Pencarian
+Search strategy dihasilkan dari komponen {p.get('framework','PICOS')} dan otomatis mengikuti perubahan pada judul, bidang, population/problem, intervention/exposure, comparator, outcome, dan study design.
+
 ```text
 {build_search_string(st.session_state.terms)}
 ```
@@ -1217,6 +1317,7 @@ def make_export_zip():
             "project": st.session_state.project,
             "criteria": st.session_state.criteria,
             "terms": st.session_state.terms,
+            "sync_config": st.session_state.sync_config,
             "notes": st.session_state.notes,
         }, ensure_ascii=False, indent=2))
     mem.seek(0)
@@ -1238,23 +1339,26 @@ def download_df_button(label, df, filename):
 def render_sidebar():
     checks, pct = completion_status()
     st.sidebar.title("Workflow")
+    cfg = st.session_state.sync_config
+    cfg["auto_sync"] = st.sidebar.toggle("Auto-sync antarmenu", value=cfg.get("auto_sync", True), help="Jika aktif, isi Protocol, Search Strategy, Screening Score, PRISMA, Quality, Extraction, Insight, dan Export otomatis mengikuti menu sebelumnya.")
+    cfg["overwrite_generated"] = st.sidebar.toggle("Timpa isi otomatis", value=cfg.get("overwrite_generated", True), help="Jika aktif, sistem akan memperbarui research question, kriteria, dan search terms dari Judul & PICOS/PECO. Matikan jika ingin menjaga edit manual.")
+    st.sidebar.caption(f"Sinkron terakhir: {cfg.get('last_sync', 'Belum pernah sinkron')}")
     st.sidebar.progress(pct / 100)
     st.sidebar.caption(f"Progress: {pct}%")
     for label, ok in checks.items():
         st.sidebar.write(("✅" if ok else "⬜") + " " + label)
     st.sidebar.markdown("---")
     if st.sidebar.button("🔄 Sinkronkan semua modul", use_container_width=True):
-        st.session_state.articles = flag_duplicates(st.session_state.articles)
-        st.session_state.articles = apply_relevance_scoring(st.session_state.articles)
-        sync_quality_extraction()
-        st.sidebar.success("Data sudah disinkronkan.")
+        sync_downstream_from_project(reason="tombol sidebar")
+        st.sidebar.success("Semua menu sudah mengikuti isi menu sebelumnya.")
     st.sidebar.caption(APP_VERSION)
 
 
 def page_workflow():
     st.title(f"🌾 {APP_TITLE}")
     st.caption(APP_VERSION)
-    st.info("Gunakan halaman ini sebagai peta kerja. Setiap langkah menghasilkan output yang dipakai oleh langkah berikutnya.")
+    st.info("Gunakan halaman ini sebagai peta kerja. Setiap langkah menghasilkan output yang dipakai oleh langkah berikutnya. Mode auto-sync membuat menu berikutnya langsung menyesuaikan isi menu sebelumnya.")
+    render_sync_status()
 
     steps = [
         ("1", "Judul & PICOS/PECO", "Masukkan judul, bidang, target jurnal, dan komponen PICOS/PECO.", "Output: skor kesiapan judul, kelemahan, rekomendasi judul, research question."),
@@ -1272,6 +1376,14 @@ def page_workflow():
             st.write(desc)
             st.caption(out)
 
+    st.subheader("Cara kerja integrasi otomatis")
+    st.markdown("""
+- Perubahan pada **Langkah 1** membentuk ulang research question, inclusion-exclusion criteria, dan Boolean search.
+- Perubahan pada **Langkah 2** langsung memperbarui skor relevansi artikel pada Screening.
+- Keputusan **Screening** langsung mengubah angka PRISMA dan daftar artikel pada Quality Assessment serta Data Extraction.
+- Hasil **Quality Assessment** dan **Data Extraction** langsung dibaca oleh Evidence Insight Report dan Export ZIP.
+""")
+
     st.subheader("Ringkasan cepat proyek")
     p = st.session_state.project
     c1, c2, c3, c4 = st.columns(4)
@@ -1283,6 +1395,7 @@ def page_workflow():
 
 def page_title_protocol():
     st.header("1. Judul, PICOS/PECO, dan Kelayakan Naskah")
+    render_sync_status()
     p = st.session_state.project.copy()
     with st.form("project_form"):
         p["title"] = st.text_area("Judul sementara", value=p.get("title", ""), height=80)
@@ -1304,8 +1417,8 @@ def page_title_protocol():
         submitted = st.form_submit_button("Simpan dan analisis", use_container_width=True)
     if submitted:
         st.session_state.project = p
-        st.session_state.terms = suggest_terms_from_project(p)
-        st.success("Data proyek disimpan dan search terms otomatis diperbarui.")
+        sync_downstream_from_project(reason="judul/PICOS disimpan")
+        st.success("Data proyek disimpan. Protocol, Search Strategy, Screening Score, PRISMA, Quality, Data Extraction, Insight, dan Export sudah menyesuaikan.")
 
     result = analyze_title(st.session_state.project)
     st.subheader("Hasil Analisis Kelayakan")
@@ -1338,8 +1451,14 @@ def page_title_protocol():
 
 def page_protocol_search():
     st.header("2. Protocol dan Search Strategy")
+    sync_if_auto(reason="membuka protocol & search")
+    render_sync_status()
     p = st.session_state.project
     c = st.session_state.criteria
+    if st.button("Ambil ulang otomatis dari Judul & PICOS/PECO", use_container_width=True):
+        sync_downstream_from_project(reason="regenerate protocol/search")
+        st.success("Protocol, kriteria, dan search terms sudah dibuat ulang dari menu sebelumnya.")
+        st.rerun()
     with st.form("protocol_search"):
         p["research_question"] = st.text_area("Research question", value=p.get("research_question", ""), height=70)
         c["inclusion"] = st.text_area("Kriteria inklusi", value=c.get("inclusion", ""), height=90)
@@ -1358,7 +1477,9 @@ def page_protocol_search():
         st.session_state.criteria = c
         st.session_state.terms = t
         st.session_state.articles = apply_relevance_scoring(st.session_state.articles)
-        st.success("Protocol dan search strategy tersimpan. Relevance scoring artikel juga diperbarui.")
+        sync_quality_extraction()
+        st.session_state.sync_config["last_sync"] = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (protocol/search disimpan)"
+        st.success("Protocol dan Search Strategy tersimpan. Screening score, PRISMA, Quality Assessment, Data Extraction, Insight, dan Export ikut diperbarui.")
 
     result = analyze_title(st.session_state.project)
     profile = DOMAIN_PROFILES.get(result["domain"], DOMAIN_PROFILES["Peternakan"])
@@ -1378,7 +1499,10 @@ def page_protocol_search():
 
 def page_import_screening():
     st.header("3-4. Import Artikel dan Screening Terintegrasi")
-    st.write("Unggah hasil ekspor dari database dalam format XLSX, XLS, atau RIS. Sistem akan menormalisasi kolom, mendeteksi duplikasi, dan memberi skor relevansi berdasarkan PICOS/PECO.")
+    sync_if_auto(reason="membuka import & screening")
+    render_sync_status()
+    st.write("Unggah hasil ekspor dari database dalam format XLSX, XLS, atau RIS. Sistem akan menormalisasi kolom, mendeteksi duplikasi, dan memberi skor relevansi berdasarkan PICOS/PECO yang aktif dari menu sebelumnya.")
+    st.info(f"Screening score saat ini memakai kerangka {st.session_state.project.get('framework', 'PICOS')} untuk: {st.session_state.project.get('population','')} | {st.session_state.project.get('intervention','')} | {st.session_state.project.get('outcome','')}")
     sample_path = "data/sample_articles.xlsx"
     with open(sample_path, "rb") as f:
         st.download_button("Download template/sample XLSX", f.read(), "sample_articles.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
@@ -1443,6 +1567,8 @@ def page_import_screening():
 
 def page_prisma_quality():
     st.header("5-6. PRISMA dan Quality Assessment")
+    sync_if_auto(reason="membuka PRISMA & quality")
+    render_sync_status()
     if st.session_state.articles.empty:
         st.warning("Import artikel terlebih dahulu.")
         return
@@ -1505,6 +1631,8 @@ Studies included in final synthesis: {counts['studies_included']}
 
 def page_extraction():
     st.header("7. Data Extraction")
+    sync_if_auto(reason="membuka data extraction")
+    render_sync_status()
     if st.session_state.articles.empty:
         st.warning("Import artikel terlebih dahulu.")
         return
@@ -1538,6 +1666,8 @@ def page_extraction():
 
 def page_insight_export():
     st.header("8. Evidence Insight Report dan Export")
+    sync_if_auto(reason="membuka insight & export")
+    render_sync_status()
     st.write("Halaman ini membaca semua bagian sistem dan menyusun informasi/insight otomatis untuk membantu penulisan Results, Discussion, Limitations, dan Future Research.")
     if st.session_state.articles.empty:
         st.warning("Belum ada data artikel. Anda tetap bisa mengekspor protocol, tetapi insight bukti belum lengkap.")
