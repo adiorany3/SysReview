@@ -1,47 +1,57 @@
-# Integrated Agro Systematic Review Builder
+# Guided Agro Systematic Review Builder
 
-Aplikasi Streamlit untuk membantu peneliti menyusun systematic review bidang agro, peternakan, agronomi, pangan, perikanan, dan lingkungan secara terpadu.
+Aplikasi Streamlit untuk membantu peneliti menyusun systematic review bidang agro, peternakan, agronomi, pangan, perikanan, akuakultur, dan lingkungan dengan workflow yang lebih mudah diikuti.
 
-## Perubahan versi terintegrasi
+## Perubahan versi 2.1 guided workflow
 
-Versi ini sudah dirapikan agar setiap bagian tidak berjalan sendiri-sendiri. Alur data dibuat terpadu dari awal sampai akhir:
+Versi ini menyusun ulang sistem menjadi **alur langkah berurutan**. Setiap halaman sekarang memiliki keterangan:
 
-1. **Title & Protocol Analyzer**
-   - Menganalisis kelayakan judul.
-   - Membuat skor kesiapan Q-level.
-   - Membuat PICOS/PECO, research question, Boolean search, rekomendasi database, quality tool, dan draft protocol.
-   - Hasilnya otomatis mengisi modul protocol, search strategy, dan screening relevance.
+- tujuan langkah;
+- input yang harus disiapkan;
+- output yang dihasilkan;
+- tindakan lanjut sebelum pindah ke langkah berikutnya;
+- status apakah langkah tersebut sudah aktif/lengkap.
 
-2. **Protocol & PICOS**
-   - Menjadi pusat data review.
-   - Jika PICOS/PECO diubah, search terms dan scoring artikel dapat diperbarui otomatis.
+Menu utama tidak lagi berupa modul terpisah, tetapi menjadi urutan kerja:
 
-3. **Search Strategy**
-   - Boolean search dibangun dari data protocol.
-   - Search terms yang disimpan akan menghitung ulang relevansi artikel yang sudah diimpor.
-   - Database final akan masuk ke protocol dan draft methods.
+1. **Analisis Judul & Topik**
+   - Menilai kelayakan judul.
+   - Membuat skor kesiapan menuju target Q-level.
+   - Mendeteksi kelemahan judul.
+   - Menyusun rekomendasi judul, research question, PICOS/PECO, Boolean search awal, database, quality tool, dan draft protocol.
 
-4. **Import & Screening**
-   - File CSV/XLSX/RIS otomatis dinormalisasi.
-   - Sistem mendeteksi duplikasi.
-   - Artikel diberi PICOS relevance score.
-   - Keputusan screening dapat dibantu dengan saran otomatis.
+2. **Susun Protocol & PICOS**
+   - Mengunci judul final, research question, PICOS/PECO, rentang tahun, kriteria inklusi, dan kriteria eksklusi.
+   - Menjadi pusat data untuk seluruh proses review.
 
-5. **PRISMA Flow**
-   - Jumlah PRISMA otomatis ditarik dari hasil screening.
-   - Mode manual tetap tersedia bila peneliti memiliki data dari sumber tambahan.
+3. **Bangun Search Strategy**
+   - Menyusun Boolean search dari protocol.
+   - Menentukan database final.
+   - Membuat search log template agar pencarian artikel terdokumentasi.
 
-6. **Quality Assessment**
-   - Hanya menampilkan artikel yang sudah masuk kategori Include.
-   - Terhubung dengan hasil screening/full-text.
+4. **Import Artikel & Screening**
+   - Mengimpor file CSV/XLSX/RIS.
+   - Menormalkan kolom bibliografi.
+   - Mendeteksi duplikasi.
+   - Memberi skor relevansi PICOS/PECO.
+   - Membantu keputusan Include/Maybe/Exclude.
 
-7. **Data Extraction**
-   - Hanya menampilkan artikel Include.
-   - Data awal seperti judul, komoditas/spesies, intervensi, pembanding, dan outcome ditarik dari tabel screening.
+5. **Cek PRISMA Flow**
+   - Mengambil angka PRISMA secara otomatis dari data screening.
+   - Menampilkan identification, screening, eligibility, dan included.
+   - Menyediakan mode manual bila peneliti memiliki data tambahan dari sumber lain.
 
-8. **Synthesis & Export**
-   - Menarik semua data dari protocol, PRISMA, screening, quality assessment, dan data extraction.
-   - Dapat mengekspor protocol, methods template, synthesis summary, CSV, JSON, dan paket ZIP output.
+6. **Nilai Kualitas Studi**
+   - Hanya menampilkan artikel yang sudah included.
+   - Menghasilkan quality score, quality category, dan catatan kualitas metodologi.
+
+7. **Ekstraksi Data**
+   - Mengambil data utama dari artikel included.
+   - Mencatat desain studi, sampel, durasi, intervensi, outcome, effect direction, effect size, p-value, dan key finding.
+
+8. **Sintesis & Export Naskah**
+   - Menggabungkan protocol, PRISMA, screening, quality assessment, dan data extraction.
+   - Mengekspor protocol, methods template, synthesis summary, CSV, project JSON, dan paket ZIP output.
 
 ## Cara menjalankan lokal
 

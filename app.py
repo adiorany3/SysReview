@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 APP_TITLE = "Integrated Agro Systematic Review Builder"
-APP_VERSION = "2.0-integrated"
+APP_VERSION = "2.1-guided-workflow"
 
 ARTICLE_COLUMNS = [
     "id", "title", "authors", "year", "journal", "doi", "country", "study_design",
@@ -127,6 +127,84 @@ DEFAULT_TERMS = {
     "outcome_terms": "growth performance\nfeed conversion ratio\nbody weight gain\nmortality",
     "study_terms": "experimental study\nfeeding trial\ncontrolled trial",
 }
+
+
+WORKFLOW_STEPS = [
+    {
+        "no": 1,
+        "menu": "Langkah 1 - Analisis Judul & Topik",
+        "status_key": "Analisis judul",
+        "goal": "Menentukan topik review yang spesifik, layak, dan sesuai kaidah systematic review.",
+        "input": "Judul sementara, bidang, kerangka PICOS/PECO, target jurnal, population, intervention/exposure, comparator, outcome.",
+        "output": "Skor kelayakan, diagnosis kelemahan, rekomendasi judul, research question, draft protocol awal.",
+        "next_action": "Terapkan hasil analisis ke protocol, lalu lanjut ke Langkah 2.",
+    },
+    {
+        "no": 2,
+        "menu": "Langkah 2 - Susun Protocol & PICOS",
+        "status_key": "Protocol & PICOS",
+        "goal": "Mengunci rancangan penelitian agar screening dan sintesis tidak berubah-ubah di tengah proses.",
+        "input": "Judul final, research question, PICOS/PECO, rentang tahun, inklusi, eksklusi.",
+        "output": "Protocol systematic review, kriteria inklusi-eksklusi, database dan quality tool awal.",
+        "next_action": "Simpan protocol dan sinkronkan search terms, lalu lanjut ke Langkah 3.",
+    },
+    {
+        "no": 3,
+        "menu": "Langkah 3 - Bangun Search Strategy",
+        "status_key": "Search strategy",
+        "goal": "Membuat Boolean search yang transparan, dapat diulang, dan siap dipakai di database ilmiah.",
+        "input": "Istilah population, intervention/exposure, comparator, outcome, dan study design.",
+        "output": "Boolean search, daftar database final, search log template.",
+        "next_action": "Download/copy Boolean search, cari artikel di database, ekspor CSV/RIS/XLSX, lalu lanjut ke Langkah 4.",
+    },
+    {
+        "no": 4,
+        "menu": "Langkah 4 - Import Artikel & Screening",
+        "status_key": "Screening",
+        "goal": "Mengimpor hasil pencarian, menghapus duplikasi, dan menyeleksi artikel berdasarkan PICOS/PECO.",
+        "input": "File bibliografi CSV, XLSX, XLS, atau RIS dari database.",
+        "output": "Screening title/abstract, full-text decision, alasan eksklusi, daftar artikel included.",
+        "next_action": "Pastikan keputusan Include/Exclude/Maybe dan alasan eksklusi sudah terisi, lalu lanjut ke Langkah 5.",
+    },
+    {
+        "no": 5,
+        "menu": "Langkah 5 - Cek PRISMA Flow",
+        "status_key": "PRISMA",
+        "goal": "Memastikan angka identification, screening, eligibility, dan included otomatis sesuai hasil screening.",
+        "input": "Data hasil import, duplikasi, screening, dan full-text decision.",
+        "output": "PRISMA text flow, jumlah eksklusi, file prisma_counts.csv.",
+        "next_action": "Periksa angka PRISMA. Jika sudah sesuai, lanjut ke Langkah 6.",
+    },
+    {
+        "no": 6,
+        "menu": "Langkah 6 - Nilai Kualitas Studi",
+        "status_key": "Quality assessment",
+        "goal": "Menilai kualitas metodologi artikel included sebelum disintesis.",
+        "input": "Artikel yang sudah berstatus included.",
+        "output": "Quality score, kategori kualitas, dan catatan bias/metodologi.",
+        "next_action": "Lengkapi checklist kualitas untuk setiap studi, lalu lanjut ke Langkah 7.",
+    },
+    {
+        "no": 7,
+        "menu": "Langkah 7 - Ekstraksi Data",
+        "status_key": "Data extraction",
+        "goal": "Mengambil data penting dari artikel included untuk bahan sintesis dan kemungkinan meta-analysis.",
+        "input": "Artikel included dan full-text article.",
+        "output": "Tabel extraction berisi desain studi, sampel, intervensi, outcome, effect direction, effect size, dan key finding.",
+        "next_action": "Lengkapi key finding, effect direction, effect size/p-value bila tersedia, lalu lanjut ke Langkah 8.",
+    },
+    {
+        "no": 8,
+        "menu": "Langkah 8 - Sintesis & Export Naskah",
+        "status_key": "Synthesis export",
+        "goal": "Menggabungkan protocol, PRISMA, quality assessment, dan extraction menjadi output naskah awal.",
+        "input": "Semua data dari langkah sebelumnya.",
+        "output": "Protocol, methods template, synthesis summary, project JSON, dan paket ZIP output.",
+        "next_action": "Download ZIP output dan gunakan sebagai bahan penyusunan naskah jurnal.",
+    },
+]
+
+WORKFLOW_MENU = ["Panduan Workflow"] + [step["menu"] for step in WORKFLOW_STEPS]
 
 
 def empty_articles() -> pd.DataFrame:
@@ -837,15 +915,51 @@ def page_header(title: str, subtitle: str | None = None) -> None:
         st.caption(subtitle)
 
 
-def sidebar_workflow() -> None:
-    st.sidebar.title("Navigasi")
+def workflow_status_for_step(step: dict, status: dict | None = None) -> bool:
+    status = status or completion_status()
+    return bool(status.get(step["status_key"], False))
+
+
+def get_step_by_menu(menu: str) -> dict | None:
+    for step in WORKFLOW_STEPS:
+        if step["menu"] == menu:
+            return step
+    return None
+
+
+def next_step_menu(current_menu: str) -> str | None:
+    for idx, step in enumerate(WORKFLOW_STEPS):
+        if step["menu"] == current_menu and idx + 1 < len(WORKFLOW_STEPS):
+            return WORKFLOW_STEPS[idx + 1]["menu"]
+    return None
+
+
+def previous_step_menu(current_menu: str) -> str | None:
+    for idx, step in enumerate(WORKFLOW_STEPS):
+        if step["menu"] == current_menu and idx > 0:
+            return WORKFLOW_STEPS[idx - 1]["menu"]
+    return None
+
+
+def sidebar_workflow(current_page: str | None = None) -> None:
+    st.sidebar.title("Workflow Review")
     status = completion_status()
     done = sum(status.values())
     total = len(status)
     st.sidebar.progress(done / total if total else 0)
-    st.sidebar.caption(f"Integrasi workflow: {done}/{total} tahap aktif")
-    for name, ok in status.items():
-        st.sidebar.write(("✅ " if ok else "⬜ ") + name)
+    st.sidebar.caption(f"Progress integrasi: {done}/{total} indikator aktif")
+
+    current_step = get_step_by_menu(current_page or "")
+    if current_step:
+        st.sidebar.info(f"Sedang di Langkah {current_step['no']}: {current_step['goal']}")
+
+    st.sidebar.markdown("### Checklist langkah")
+    for step in WORKFLOW_STEPS:
+        ok = workflow_status_for_step(step, status)
+        active = current_step and step["no"] == current_step["no"]
+        marker = "➡️" if active else ("✅" if ok else "⬜")
+        st.sidebar.write(f"{marker} {step['no']}. {step['menu'].split(' - ', 1)[-1]}")
+
     st.sidebar.markdown("---")
     if st.sidebar.button("Sinkronkan semua modul", use_container_width=True):
         st.session_state.articles = enrich_articles(st.session_state.articles)
@@ -853,6 +967,95 @@ def sidebar_workflow() -> None:
         add_log("Semua modul disinkronkan manual.")
         st.rerun()
 
+
+def render_step_context(menu: str) -> None:
+    step = get_step_by_menu(menu)
+    if not step:
+        return
+    status = completion_status()
+    done = workflow_status_for_step(step, status)
+    st.markdown(f"### Langkah {step['no']} dari {len(WORKFLOW_STEPS)}")
+    st.info(step["goal"])
+    c1, c2, c3 = st.columns(3)
+    c1.markdown(f"**Input**\n\n{step['input']}")
+    c2.markdown(f"**Output**\n\n{step['output']}")
+    c3.markdown(f"**Lanjut setelah ini**\n\n{step['next_action']}")
+    st.caption(("Status: selesai/aktif ✅" if done else "Status: belum lengkap ⬜") + " — data dari langkah ini akan dipakai oleh langkah berikutnya.")
+    st.markdown("---")
+
+
+def page_workflow_guide() -> None:
+    st.title(f"🌾 {APP_TITLE}")
+    st.caption("Panduan kerja terpadu dari penentuan judul sampai export bahan naskah systematic review.")
+
+    sync_downstream()
+    counts = prisma_counts()
+    articles = st.session_state.articles
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Artikel", len(articles))
+    col2.metric("Duplikasi", counts.get("duplicates_removed", 0))
+    col3.metric("Screened", counts.get("records_screened", 0))
+    col4.metric("Full-text", counts.get("full_text_assessed", 0))
+    col5.metric("Included", counts.get("studies_included", 0))
+
+    p = st.session_state.project
+    st.subheader("Ringkasan Proyek Saat Ini")
+    st.markdown(f"**Judul:** {p.get('title', '')}")
+    st.markdown(f"**Research question:** {p.get('research_question', '')}")
+    c1, c2, c3 = st.columns(3)
+    c1.info(f"**Population:** {p.get('population', '-')}")
+    c2.info(f"**Intervention/Exposure:** {p.get('intervention', '-')}")
+    c3.info(f"**Outcome:** {p.get('outcome', '-')}")
+
+    st.subheader("Urutan Workflow yang Disarankan")
+    status = completion_status()
+    rows = []
+    for step in WORKFLOW_STEPS:
+        rows.append({
+            "Langkah": step["no"],
+            "Bagian": step["menu"].split(" - ", 1)[-1],
+            "Tujuan": step["goal"],
+            "Output utama": step["output"],
+            "Status": "Selesai/Aktif" if workflow_status_for_step(step, status) else "Belum lengkap",
+        })
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    st.subheader("Buka Langkah")
+    for step in WORKFLOW_STEPS:
+        cols = st.columns([0.7, 2.1, 4.2, 1])
+        cols[0].markdown(f"**{step['no']}**")
+        cols[1].markdown(f"**{step['menu'].split(' - ', 1)[-1]}**")
+        cols[2].caption(step["next_action"])
+        if cols[3].button("Buka", key=f"open_step_{step['no']}", use_container_width=True):
+            st.session_state.requested_page = step["menu"]
+            st.rerun()
+
+    st.subheader("Cara Pakai Paling Sederhana")
+    st.markdown(
+        """
+        1. Mulai dari **Langkah 1** untuk menilai judul dan membentuk PICOS/PECO.  
+        2. Simpan hasilnya di **Langkah 2** agar protocol menjadi pusat data.  
+        3. Gunakan **Langkah 3** untuk menyalin Boolean search ke Scopus/Web of Science/database lain.  
+        4. Upload hasil ekspor database di **Langkah 4**, lalu lakukan screening dan full-text decision.  
+        5. Cek angka **PRISMA** pada Langkah 5.  
+        6. Isi **Quality Assessment** dan **Data Extraction** pada Langkah 6–7.  
+        7. Download paket naskah di **Langkah 8**.
+        """
+    )
+
+    if st.session_state.workflow_log:
+        st.subheader("Log Integrasi Terbaru")
+        for item in reversed(st.session_state.workflow_log[-6:]):
+            st.write(f"- {item['date']}: {item['message']}")
+
+    st.subheader("Simpan / Muat Project")
+    c1, c2 = st.columns(2)
+    c1.download_button("Download project_state.json", export_project_json().encode("utf-8"), "project_state.json", "application/json", use_container_width=True)
+    uploaded_state = c2.file_uploader("Muat project_state.json", type=["json"], key="load_project_json")
+    if uploaded_state is not None and c2.button("Terapkan project JSON", use_container_width=True):
+        import_project_json(uploaded_state)
+        st.success("Project berhasil dimuat.")
+        st.rerun()
 
 def page_dashboard() -> None:
     st.title(f"🌾 {APP_TITLE}")
@@ -1338,41 +1541,33 @@ def page_synthesis() -> None:
 
 def main() -> None:
     init_state()
-    sidebar_workflow()
-    page = st.sidebar.radio(
-        "Menu",
-        [
-            "Dashboard",
-            "Title & Protocol Analyzer",
-            "Protocol & PICOS",
-            "Search Strategy",
-            "Import & Screening",
-            "PRISMA Flow",
-            "Quality Assessment",
-            "Data Extraction",
-            "Synthesis & Export",
-        ],
-    )
+    if "requested_page" in st.session_state:
+        st.session_state.workflow_page = st.session_state.pop("requested_page")
+    page = st.sidebar.radio("Pilih workflow", WORKFLOW_MENU, key="workflow_page")
+    sidebar_workflow(page)
     st.sidebar.markdown("---")
-    st.sidebar.caption("Versi 2.0: setiap modul saling terhubung melalui state project terpadu.")
+    st.sidebar.caption("Versi 2.1-guided: workflow disusun sebagai langkah berurutan, dengan input-output tiap tahap yang saling terhubung.")
 
-    if page == "Dashboard":
-        page_dashboard()
-    elif page == "Title & Protocol Analyzer":
+    if page != "Panduan Workflow":
+        render_step_context(page)
+
+    if page == "Panduan Workflow":
+        page_workflow_guide()
+    elif page == "Langkah 1 - Analisis Judul & Topik":
         page_title_analyzer()
-    elif page == "Protocol & PICOS":
+    elif page == "Langkah 2 - Susun Protocol & PICOS":
         page_protocol()
-    elif page == "Search Strategy":
+    elif page == "Langkah 3 - Bangun Search Strategy":
         page_search_strategy()
-    elif page == "Import & Screening":
+    elif page == "Langkah 4 - Import Artikel & Screening":
         page_import_screening()
-    elif page == "PRISMA Flow":
+    elif page == "Langkah 5 - Cek PRISMA Flow":
         page_prisma()
-    elif page == "Quality Assessment":
+    elif page == "Langkah 6 - Nilai Kualitas Studi":
         page_quality()
-    elif page == "Data Extraction":
+    elif page == "Langkah 7 - Ekstraksi Data":
         page_extraction()
-    elif page == "Synthesis & Export":
+    elif page == "Langkah 8 - Sintesis & Export Naskah":
         page_synthesis()
 
 
