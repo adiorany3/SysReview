@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 APP_TITLE = "Agro & Biosystems Systematic Review Builder"
-APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + SlashAI Chat Completions + Manual AI Prompt Copy"
+APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + System AI via TOML + Manual AI Prompt Copy"
 SLASHAI_DEFAULT_API_BASE = "https://api.slashai.my.id"
 SLASHAI_DEFAULT_CHAT_COMPLETIONS_ENDPOINT = "https://api.slashai.my.id/v1/chat/completions"
 
@@ -513,7 +513,7 @@ def init_state():
             "last_sync": "Belum pernah sinkron",
         },
         "ai_config": {
-            "mode": "Offline Mode",
+            "mode": "Online AI Mode",
             "model_selection": "Auto pilih model hemat biaya",
             "model": "slashai/gemini-3-flash",
             "manual_model": "slashai/gemini-3-flash",
@@ -1927,10 +1927,10 @@ def make_ai_usage_guide_markdown() -> str:
         "- Validasi semua hasil AI dengan artikel asli dan kaidah PRISMA/ROSES sebelum digunakan dalam naskah.",
         "",
         "## 4. Copy-paste manual ke ChatGPT Web tanpa API key",
-        "- Bagian Ringkasan dan Prompt Manual tetap muncul walaupun Online AI Mode belum aktif atau API key belum diisi.",
+        "- Bagian Ringkasan dan Prompt Manual tetap muncul walaupun Online AI Mode belum aktif atau API key sistem belum tersedia di secrets.toml atau fallback sesi belum diisi.",
         "- Peneliti dapat memilih jenis insight, kedalaman, fokus output, dan instruksi tambahan, lalu menyalin prompt siap pakai ke ChatGPT Web.",
         "- Cara ini berguna untuk pengguna yang memiliki akses ChatGPT Web tetapi tidak memiliki API key, atau tidak ingin menjalankan request API dari aplikasi Streamlit.",
-        "- Tombol Buat AI Insight Online hanya aktif ketika Online AI Mode aktif dan API key pribadi sudah diisi.",
+        "- Tombol Buat AI Insight Online hanya aktif ketika Online AI Mode aktif dan API key sistem/fallback tersedia.",
     ])
     return "\n".join(lines)
 
@@ -1960,7 +1960,7 @@ def make_export_zip():
             safe_name = re.sub(r"[^a-zA-Z0-9]+", "_", str(ai_name)).strip("_").lower() or "ai_insight"
             z.writestr(f"online_ai_{safe_name}.md", str(ai_text))
         z.writestr("project_state.srproj.json", resume_project_state_bytes("Export ZIP"))
-        z.writestr("project_state_README.txt", "Gunakan file project_state.srproj.json pada menu sidebar 'Simpan & lanjutkan project' untuk melanjutkan pekerjaan tanpa mulai dari awal. API key pribadi dan API Base URL tidak disimpan di file project/export.")
+        z.writestr("project_state_README.txt", "Gunakan file project_state.srproj.json pada menu sidebar 'Simpan & lanjutkan project' untuk melanjutkan pekerjaan tanpa mulai dari awal. API key sistem dari TOML/Secrets tidak disimpan di file project/export.")
     mem.seek(0)
     return mem.getvalue()
 
@@ -2011,8 +2011,55 @@ def sanitize_api_key(raw_key: str) -> str:
     return value
 
 
+def get_ai_secrets() -> dict:
+    """Read built-in AI configuration from Streamlit Secrets/TOML.
+
+    Local path: .streamlit/secrets.toml
+    Streamlit Cloud: App settings -> Secrets
+    """
+    defaults = {
+        "enabled": False,
+        "api_base_url": SLASHAI_DEFAULT_API_BASE,
+        "api_key": "",
+        "default_model": "slashai/gemini-3-flash",
+        "high_quality_model": "slashai/gemini-3.1-pro",
+    }
+    try:
+        ai = st.secrets.get("ai", {})
+        return {
+            "enabled": bool(ai.get("enabled", defaults["enabled"])),
+            "api_base_url": str(ai.get("api_base_url", defaults["api_base_url"])),
+            "api_key": sanitize_api_key(ai.get("api_key", defaults["api_key"])),
+            "default_model": str(ai.get("default_model", defaults["default_model"])),
+            "high_quality_model": str(ai.get("high_quality_model", defaults["high_quality_model"])),
+        }
+    except Exception:
+        return defaults
+
+
+def get_system_api_key() -> str:
+    """Return API key from .streamlit/secrets.toml. This is the main system key."""
+    return sanitize_api_key(get_ai_secrets().get("api_key", ""))
+
+
+def get_system_default_model() -> str:
+    return str(get_ai_secrets().get("default_model", "slashai/gemini-3-flash")).strip() or "slashai/gemini-3-flash"
+
+
+def get_system_high_quality_model() -> str:
+    return str(get_ai_secrets().get("high_quality_model", "slashai/gemini-3.1-pro")).strip() or "slashai/gemini-3.1-pro"
+
+
 def get_personal_api_key() -> str:
-    """Read the optional personal API key from session state without persisting it."""
+    """Return the effective API key.
+
+    Priority:
+    1. System API key from .streamlit/secrets.toml
+    2. Optional user/session key from sidebar fallback
+    """
+    system_key = get_system_api_key()
+    if system_key:
+        return system_key
     return sanitize_api_key(st.session_state.get("personal_openai_api_key", ""))
 
 
@@ -2038,7 +2085,18 @@ def normalize_api_base_url(api_base: str) -> str:
 
 
 def get_personal_api_base_url() -> str:
-    """Read optional OpenAI-compatible API base URL from the current session only."""
+    """Return the effective OpenAI-compatible API base URL.
+
+    Priority:
+    1. System API base from .streamlit/secrets.toml
+    2. Optional user/session base URL from sidebar fallback
+    """
+    try:
+        system_base = str(get_ai_secrets().get("api_base_url", "")).strip()
+        if system_base:
+            return normalize_api_base_url(system_base)
+    except Exception:
+        pass
     return normalize_api_base_url(st.session_state.get("personal_api_base_url", SLASHAI_DEFAULT_API_BASE))
 
 
@@ -2470,7 +2528,7 @@ def sort_model_ids(model_ids: list[str]) -> list[str]:
 def list_openai_models_with_key(api_key: str, api_base: str | None = None) -> tuple[bool, list[str] | str]:
     """List text-capable model IDs via OpenAI-compatible GET {api_base}/v1/models."""
     if not api_key:
-        return False, "API key belum diisi."
+        return False, "API key sistem belum tersedia di secrets.toml atau fallback sesi belum diisi."
     base = normalize_api_base_url(api_base or get_personal_api_base_url())
     try:
         response = requests.get(
@@ -2537,8 +2595,8 @@ def choose_model_from_available(available_models: list[str], strategy: str) -> t
             if mini:
                 return mini[0], "daftar model API"
         return available[0], "daftar model API"
-    fallback = ECONOMY_MODEL_FALLBACK if strategy == "Auto pilih model hemat biaya" else QUALITY_MODEL_FALLBACK
-    return fallback, "fallback default"
+    fallback = get_system_default_model() if strategy == "Auto pilih model hemat biaya" else get_system_high_quality_model()
+    return fallback, "fallback TOML/default"
 
 
 def get_effective_ai_model(api_key: str = "") -> tuple[str, str]:
@@ -2548,8 +2606,8 @@ def get_effective_ai_model(api_key: str = "") -> tuple[str, str]:
     available = st.session_state.get("openai_available_models", [])
 
     if strategy == "Pilih manual":
-        manual = str(ai_cfg.get("manual_model") or ai_cfg.get("model") or ECONOMY_MODEL_FALLBACK).strip()
-        return manual or ECONOMY_MODEL_FALLBACK, "pilihan manual"
+        manual = str(ai_cfg.get("manual_model") or ai_cfg.get("model") or get_system_default_model()).strip()
+        return manual or get_system_default_model(), "pilihan manual"
 
     model, source = choose_model_from_available(available, strategy)
     ai_cfg["model"] = model
@@ -2587,7 +2645,7 @@ def build_retry_model_list(primary_model: str, strategy: str = "") -> list[str]:
 def call_chat_completions_once(api_key: str, model: str, user_prompt: str, api_base: str | None = None) -> tuple[bool, str]:
     """Single OpenAI-compatible Chat Completions request without automatic retry."""
     if not api_key:
-        return False, "API key belum diisi. Gunakan Offline Mode atau masukkan API key pribadi terlebih dahulu."
+        return False, "API key sistem belum tersedia di secrets.toml atau fallback sesi belum diisi. Gunakan Offline Mode atau masukkan API key pribadi terlebih dahulu."
     base = normalize_api_base_url(api_base or get_personal_api_base_url())
     url = chat_completions_url(base)
     system_message = (
@@ -2654,7 +2712,7 @@ def call_chat_completions_once(api_key: str, model: str, user_prompt: str, api_b
 def call_openai_responses_api(api_key: str, model: str, user_prompt: str, api_base: str | None = None) -> tuple[bool, str]:
     """Call Chat Completions API; retry lighter models when SlashAI denies premium/deposit access."""
     if not api_key:
-        return False, "API key belum diisi. Gunakan Offline Mode atau masukkan API key pribadi terlebih dahulu."
+        return False, "API key sistem belum tersedia di secrets.toml atau fallback sesi belum diisi. Gunakan Offline Mode atau masukkan API key pribadi terlebih dahulu."
 
     ai_cfg = st.session_state.get("ai_config", {})
     strategy = ai_cfg.get("model_selection", "Auto pilih model hemat biaya")
@@ -2694,7 +2752,7 @@ def call_openai_responses_api(api_key: str, model: str, user_prompt: str, api_ba
 def test_chat_completion_connection(api_key: str, model: str, api_base: str | None = None) -> tuple[bool, str]:
     """Send a tiny chat completion request to verify API key, model, and endpoint together."""
     if not api_key:
-        return False, "API key belum diisi."
+        return False, "API key sistem belum tersedia di secrets.toml atau fallback sesi belum diisi."
     ok, result = call_openai_responses_api(
         api_key=api_key,
         model=model or ECONOMY_MODEL_FALLBACK,
@@ -2964,10 +3022,10 @@ def render_online_ai_insight_panel(location: str = ""):
         st.info("Online AI Mode belum aktif. Insight tetap bisa diperoleh dengan menyalin prompt di atas ke ChatGPT Web. Aktifkan Online AI Mode dari sidebar bila ingin menjalankan langsung lewat API pribadi.")
         api_ready = False
     elif not api_key:
-        st.warning("Online AI Mode aktif, tetapi API key pribadi belum diisi di sidebar. Prompt manual tetap bisa disalin ke ChatGPT Web.")
+        st.warning("Online AI Mode aktif, tetapi API key sistem belum tersedia di secrets.toml dan fallback sesi belum diisi. Prompt manual tetap bisa disalin ke ChatGPT Web.")
         api_ready = False
     else:
-        st.success("Online AI Mode aktif menggunakan API key pribadi dari sesi ini. API key tidak disimpan ke project state, ZIP export, XLSX, DOCX, atau Markdown.")
+        st.success("Online AI Mode aktif menggunakan API key sistem dari secrets.toml atau fallback sesi. API key tidak disimpan ke project state, ZIP export, XLSX, DOCX, atau Markdown.")
         st.caption(f"Model yang akan dipakai: `{model}` ({model_source}). Data project hanya dikirim saat Anda menekan tombol insight.")
         st.caption("Pastikan tidak ada data sensitif yang tidak ingin Anda kirim ke layanan API.")
         api_ready = True
@@ -3043,7 +3101,7 @@ def render_sidebar():
             mode_options,
             index=mode_options.index(current_mode) if current_mode in mode_options else 0,
             key="ai_mode_radio",
-            help="Offline Mode tidak membutuhkan API. Online AI Mode memakai API key pribadi user hanya selama sesi berjalan.",
+            help="Offline Mode tidak membutuhkan API. Online AI Mode memakai API key sistem dari secrets.toml. Jika belum tersedia, user dapat memakai fallback API key sesi.",
         )
 
         model_selection_options = ["Auto pilih model hemat biaya", "Auto pilih model kualitas tinggi", "Pilih manual"]
@@ -3082,23 +3140,29 @@ Agar hasil sesuai, lengkapi data project terlebih dahulu. AI akan jauh lebih ber
 """
             )
 
-        if st.button("Hapus API key dari sesi ini", use_container_width=True):
-            clear_personal_api_key()
-            st.success("API key pribadi dan cache daftar model sudah dihapus dari sesi aplikasi.")
-            st.rerun()
+        system_ai_ready = bool(get_system_api_key())
+        if system_ai_ready:
+            st.success("AI sistem aktif. API key dibaca dari `.streamlit/secrets.toml` / Streamlit Cloud Secrets.")
+            st.caption("API key tidak ditampilkan di UI dan tidak masuk ke export project.")
+        else:
+            st.warning("AI sistem belum aktif. Tambahkan API key di `.streamlit/secrets.toml` atau Streamlit Cloud Secrets.")
+            if st.button("Hapus API key fallback dari sesi ini", use_container_width=True):
+                clear_personal_api_key()
+                st.success("API key fallback dan cache daftar model sudah dihapus dari sesi aplikasi.")
+                st.rerun()
 
-        st.text_input(
-            "API Key pribadi / Bearer token",
-            type="password",
-            key="personal_openai_api_key",
-            help="Opsional. Boleh isi raw key saja, atau paste `Bearer ...` / `Authorization: Bearer ...`; sistem akan membersihkan formatnya. API key tidak disimpan ke project state, ZIP, XLSX, DOCX, atau Markdown.",
-        )
-        st.text_input(
-            "API Base URL",
-            value=st.session_state.get("personal_api_base_url", SLASHAI_DEFAULT_API_BASE),
-            key="personal_api_base_url",
-            help="Default memakai endpoint SlashAI: https://api.slashai.my.id/v1/chat/completions. Boleh isi base URL (https://api.slashai.my.id), /v1, atau endpoint penuh /v1/chat/completions; sistem akan menormalkan otomatis.",
-        )
+            st.text_input(
+                "API Key fallback / Bearer token",
+                type="password",
+                key="personal_openai_api_key",
+                help="Opsional hanya jika secrets.toml belum diisi. Boleh isi raw key saja, atau paste `Bearer ...` / `Authorization: Bearer ...`; sistem akan membersihkan formatnya. API key fallback tidak disimpan ke project state, ZIP, XLSX, DOCX, atau Markdown.",
+            )
+            st.text_input(
+                "API Base URL fallback",
+                value=st.session_state.get("personal_api_base_url", SLASHAI_DEFAULT_API_BASE),
+                key="personal_api_base_url",
+                help="Default memakai endpoint SlashAI: https://api.slashai.my.id/v1/chat/completions. Boleh isi base URL (https://api.slashai.my.id), /v1, atau endpoint penuh /v1/chat/completions; sistem akan menormalkan otomatis.",
+            )
         api_key = get_personal_api_key()
         st.caption(f"Endpoint chat yang digunakan: `{chat_completions_url(get_personal_api_base_url())}`")
         st.caption(f"Daftar model bawaan SlashAI tersedia: {len(SLASHAI_ALL_MODELS)} model. Contoh ringan: `slashai/gemini-3-flash`, `slashai/deepseek-v4-flash`; contoh kualitas tinggi: `slashai/gpt-5.5`, `slashai/claude-sonnet-4.7`.")
@@ -3169,11 +3233,11 @@ Agar hasil sesuai, lengkapi data project terlebih dahulu. AI akan jauh lebih ber
                     st.info("Coba pastikan API Base tetap `https://api.slashai.my.id`, model memakai awalan `slashai/`, dan field API key tidak berisi spasi/teks tambahan. Jika detail server menyebut `Deposit required`, lakukan deposit/top up di provider atau pilih model lain yang lebih ringan lewat mode manual.")
 
         if ai_cfg.get("mode") == "Online AI Mode" and api_key:
-            st.success("Online AI aktif untuk sesi ini.")
+            st.success("Online AI aktif dari sistem/secrets.")
         elif ai_cfg.get("mode") == "Online AI Mode":
-            st.warning("Online AI aktif, tetapi API key belum diisi.")
+            st.warning("Online AI aktif, tetapi API key sistem belum tersedia di secrets.toml atau fallback sesi belum diisi.")
         else:
-            st.info("Offline Mode aktif. Sistem tetap berjalan tanpa API.")
+            st.info("Offline Mode aktif. Sistem tetap berjalan tanpa API, tetapi AI sistem tersedia bila mode Online diaktifkan dan secrets.toml sudah diisi.")
         st.caption("Catatan: data project hanya dikirim ke API saat Anda menekan tombol Buat AI Insight Online.")
 
     with st.sidebar.expander("💾 Simpan & lanjutkan project", expanded=False):
