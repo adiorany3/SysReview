@@ -67,6 +67,20 @@ def init_state():
             "full_text_excluded": 0,
             "studies_included": 0,
         },
+        "title_analyzer": {
+            "working_title": "Effects of Probiotic Supplementation on Growth Performance in Broiler Chickens: A Systematic Review and Meta-Analysis",
+            "domain": "Peternakan",
+            "framework": "PICOS",
+            "population": "broiler chickens",
+            "intervention": "probiotic supplementation",
+            "comparator": "control diet or non-supplemented diet",
+            "outcome": "growth performance, feed conversion ratio, body weight gain, mortality",
+            "study_design": "experimental studies or feeding trials",
+            "target_level": "Q1/Q2",
+            "geographical_scope": "Global",
+            "year_range": "2015-2026",
+        },
+        "analyzer_result": {},
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -265,6 +279,227 @@ Based on the current screening file, {included} studies were marked as included 
 """
 
 
+DOMAIN_PROFILES = {
+    "Peternakan": {
+        "objects": ["broiler", "chicken", "poultry", "ruminant", "cattle", "goat", "sheep", "dairy", "layer", "duck"],
+        "interventions": ["probiotic", "prebiotic", "synbiotic", "feed additive", "black soldier fly", "herbal", "enzyme", "antibiotic alternative"],
+        "outcomes": ["growth performance", "feed conversion ratio", "body weight", "mortality", "egg production", "milk yield", "methane", "digestibility"],
+        "databases": ["Scopus", "Web of Science", "CAB Abstracts", "ScienceDirect", "PubMed", "SpringerLink", "Wiley Online Library"],
+        "quality_tool": "SYRCLE/ARRIVE-based checklist untuk studi hewan; JBI atau Newcastle-Ottawa untuk observasional.",
+    },
+    "Agro/Agronomi": {
+        "objects": ["maize", "rice", "paddy", "wheat", "soybean", "soil", "crop", "plant", "zea mays", "oryza"],
+        "interventions": ["biochar", "organic fertilizer", "compost", "irrigation", "drought", "nitrogen", "mulch", "climate-smart"],
+        "outcomes": ["yield", "soil organic carbon", "nutrient availability", "nitrogen uptake", "water use efficiency", "productivity"],
+        "databases": ["Scopus", "Web of Science", "CAB Abstracts", "AGRICOLA", "ScienceDirect", "SpringerLink", "Taylor & Francis"],
+        "quality_tool": "CEE/ROSES critical appraisal, JBI checklist, atau checklist desain eksperimen lapangan.",
+    },
+    "Perikanan/Akuakultur": {
+        "objects": ["fish", "tilapia", "shrimp", "catfish", "aquaculture", "carp", "salmon"],
+        "interventions": ["feed additive", "probiotic", "prebiotic", "replacement", "biofloc", "water quality", "immunostimulant"],
+        "outcomes": ["growth performance", "feed conversion ratio", "survival rate", "immune response", "water quality"],
+        "databases": ["Scopus", "Web of Science", "Aquatic Sciences and Fisheries Abstracts", "ScienceDirect", "SpringerLink", "Wiley Online Library"],
+        "quality_tool": "Checklist eksperimen akuakultur berbasis desain, outcome, statistik, dan bias reporting.",
+    },
+    "Pangan": {
+        "objects": ["food", "functional food", "meat", "milk", "grain", "fruit", "vegetable", "processing"],
+        "interventions": ["processing", "fermentation", "packaging", "fortification", "drying", "storage", "edible coating"],
+        "outcomes": ["quality", "shelf life", "antioxidant", "microbial", "sensory", "nutritional", "safety"],
+        "databases": ["Scopus", "Web of Science", "ScienceDirect", "PubMed", "Food Science and Technology Abstracts", "Wiley Online Library"],
+        "quality_tool": "JBI checklist, desain eksperimen pangan, atau quality appraisal sesuai tipe studi.",
+    },
+    "Lingkungan": {
+        "objects": ["soil", "water", "waste", "ecosystem", "land", "emission", "climate", "biodiversity"],
+        "interventions": ["remediation", "biochar", "waste management", "mitigation", "conservation", "restoration"],
+        "outcomes": ["carbon", "emission", "pollution", "biodiversity", "soil quality", "water quality", "sustainability"],
+        "databases": ["Scopus", "Web of Science", "Environmental Evidence", "ScienceDirect", "SpringerLink", "Taylor & Francis"],
+        "quality_tool": "ROSES/CEE critical appraisal untuk evidence synthesis lingkungan.",
+    },
+}
+
+GENERIC_BAD_TERMS = ["review", "systematic review", "kajian", "studi", "analisis", "pengaruh", "effect", "effects", "impact", "artikel"]
+
+
+def split_phrase_terms(text: str) -> list:
+    parts = []
+    for chunk in re.split(r"[,;/\n]+", text or ""):
+        clean = chunk.strip().lower()
+        clean = re.sub(r"\s+", " ", clean)
+        if clean:
+            parts.append(clean)
+    return parts
+
+
+def title_contains_any(title: str, terms: list) -> bool:
+    low = title.lower()
+    return any(t.lower() in low for t in terms if t)
+
+
+def infer_domain_from_title(title: str, selected_domain: str) -> str:
+    if selected_domain and selected_domain != "Otomatis":
+        return selected_domain
+    scores = {}
+    low = title.lower()
+    for domain, profile in DOMAIN_PROFILES.items():
+        terms = profile["objects"] + profile["interventions"] + profile["outcomes"]
+        scores[domain] = sum(1 for term in terms if term in low)
+    best = max(scores, key=scores.get)
+    return best if scores[best] > 0 else "Peternakan"
+
+
+def suggest_terms_from_profile(domain: str, population: str, intervention: str, outcome: str, comparator: str = "") -> dict:
+    profile = DOMAIN_PROFILES.get(domain, DOMAIN_PROFILES["Peternakan"])
+    pop_terms = split_phrase_terms(population) or profile["objects"][:4]
+    int_terms = split_phrase_terms(intervention) or profile["interventions"][:4]
+    comp_terms = split_phrase_terms(comparator) or ["control", "without treatment", "standard practice"]
+    out_terms = split_phrase_terms(outcome) or profile["outcomes"][:4]
+    return {
+        "population_terms": "\n".join(dict.fromkeys(pop_terms + profile["objects"][:3])),
+        "intervention_terms": "\n".join(dict.fromkeys(int_terms + profile["interventions"][:3])),
+        "comparator_terms": "\n".join(dict.fromkeys(comp_terms)),
+        "outcome_terms": "\n".join(dict.fromkeys(out_terms + profile["outcomes"][:3])),
+        "study_terms": "experimental study\nfield trial\ncontrolled trial\nobservational study",
+    }
+
+
+def analyze_review_title(data: dict) -> dict:
+    title = (data.get("working_title") or "").strip()
+    domain = infer_domain_from_title(title, data.get("domain", "Peternakan"))
+    framework = data.get("framework", "PICOS")
+    population = (data.get("population") or "").strip()
+    intervention = (data.get("intervention") or "").strip()
+    comparator = (data.get("comparator") or "").strip()
+    outcome = (data.get("outcome") or "").strip()
+    study_design = (data.get("study_design") or "").strip()
+    target_level = data.get("target_level", "Q1/Q2")
+    geo = data.get("geographical_scope", "Global")
+    year_range = data.get("year_range", "")
+
+    has_review_label = bool(re.search(r"systematic review|meta-analysis|meta analysis|systematic map|scoping review", title, re.I))
+    has_population = bool(population) or title_contains_any(title, DOMAIN_PROFILES.get(domain, {}).get("objects", []))
+    has_intervention = bool(intervention) or title_contains_any(title, DOMAIN_PROFILES.get(domain, {}).get("interventions", []))
+    has_outcome = bool(outcome) or title_contains_any(title, DOMAIN_PROFILES.get(domain, {}).get("outcomes", []))
+    has_comparator = bool(comparator) or bool(re.search(r"control|compared|versus|vs\.?|without|conventional", title, re.I))
+    has_study_design = bool(study_design) or has_review_label
+    global_scope = geo.lower() in ["global", "internasional", "international"] or not re.search(r"indonesia|local|lokal|kabupaten|kecamatan", title, re.I)
+    title_len = len(title.split())
+    too_short = title_len < 8
+    too_long = title_len > 28
+    too_generic = sum(1 for term in GENERIC_BAD_TERMS if term in title.lower()) >= 3 and not (has_population and has_intervention and has_outcome)
+
+    sub_scores = {
+        "Kejelasan topik": 15 if has_population and has_intervention else 8 if has_population or has_intervention else 3,
+        "Kelengkapan PICOS/PECO": sum([has_population, has_intervention, has_comparator, has_outcome, has_study_design]) * 7,
+        "Outcome terukur": 15 if has_outcome else 5,
+        "Kelayakan meta-analysis": 12 if has_outcome and has_comparator else 6 if has_outcome else 2,
+        "Relevansi global": 10 if global_scope else 5,
+        "Kerapian judul": 8 if not too_short and not too_long and has_review_label else 4,
+    }
+    score = min(100, int(sum(sub_scores.values())))
+
+    weaknesses = []
+    if not title:
+        weaknesses.append("Judul belum diisi.")
+    if too_short:
+        weaknesses.append("Judul terlalu pendek; tambahkan objek, intervensi, outcome, dan jenis review.")
+    if too_long:
+        weaknesses.append("Judul cukup panjang; pertimbangkan membuatnya lebih padat agar mudah dibaca reviewer.")
+    if not has_review_label:
+        weaknesses.append("Judul belum menyebut jenis naskah, misalnya Systematic Review atau Systematic Review and Meta-Analysis.")
+    if not has_population:
+        weaknesses.append("Population/problem belum jelas. Sebutkan spesies, komoditas, crop, tanah, atau sistem produksi yang dikaji.")
+    if not has_intervention:
+        weaknesses.append("Intervention/exposure belum jelas. Sebutkan perlakuan seperti probiotik, biochar, pupuk organik, BSF larvae meal, atau teknologi tertentu.")
+    if not has_comparator:
+        weaknesses.append("Comparator belum eksplisit. Tambahkan pembanding seperti control diet, no treatment, conventional practice, atau non-amended soil.")
+    if not has_outcome:
+        weaknesses.append("Outcome belum terlihat. Tambahkan variabel hasil seperti FCR, body weight gain, yield, soil organic carbon, mortality, atau nutrient uptake.")
+    if too_generic:
+        weaknesses.append("Judul masih terasa umum seperti narrative review. Perjelas agar cocok menjadi systematic review.")
+    if not global_scope:
+        weaknesses.append("Ruang lingkup masih lokal. Untuk target Q-level, jelaskan kontribusi global atau alasan konteks lokal penting secara internasional.")
+
+    strengths = []
+    if has_population:
+        strengths.append("Objek/populasi sudah mulai terarah.")
+    if has_intervention:
+        strengths.append("Intervensi/eksposur sudah dapat dikenali.")
+    if has_outcome:
+        strengths.append("Outcome sudah mendukung sintesis bukti.")
+    if has_review_label:
+        strengths.append("Jenis naskah review sudah tercermin pada judul.")
+    if has_outcome and has_comparator:
+        strengths.append("Topik berpotensi dikembangkan menjadi meta-analysis apabila data studi homogen.")
+
+    readiness = "Belum siap"
+    if score >= 80:
+        readiness = "Siap dikembangkan untuk target Q-level"
+    elif score >= 60:
+        readiness = "Cukup siap, tetapi perlu penguatan metode dan cakupan"
+    elif score >= 40:
+        readiness = "Perlu revisi besar sebelum layak menjadi systematic review"
+
+    base_pop = population or "target population/commodity"
+    base_int = intervention or "intervention/exposure"
+    base_comp = comparator or "control or conventional practice"
+    base_out = outcome or "main outcomes"
+    suggested_titles = [
+        f"Effects of {base_int.title()} on {base_out.title()} in {base_pop.title()}: A Systematic Review",
+        f"{base_int.title()} for Improving {base_out.title()} in {base_pop.title()}: A Systematic Review and Meta-Analysis",
+        f"Evidence on {base_int.title()} Compared with {base_comp.title()} for {base_pop.title()}: A Systematic Review",
+    ]
+    research_questions = [
+        f"How does {base_int} affect {base_out} in {base_pop} compared with {base_comp}?",
+        f"What factors explain variation in the effects of {base_int} on {base_out} across studies involving {base_pop}?",
+        f"What is the quality and strength of evidence for the use of {base_int} in {base_pop}?",
+    ]
+
+    auto_terms = suggest_terms_from_profile(domain, base_pop, base_int, base_out, base_comp)
+    search_string = build_search_string(auto_terms)
+    inclusion = f"Peer-reviewed empirical studies published within {year_range or 'the predefined year range'}; studies involving {base_pop}; studies evaluating {base_int}; studies reporting {base_out}; articles with sufficient methodological and outcome data for synthesis."
+    exclusion = "Narrative reviews, opinion papers, editorials, duplicated records, studies without relevant outcome data, articles without accessible full text, and studies outside the predefined scope or language criteria."
+
+    protocol = f"""# Draft Protocol Awal Berbasis Analisis Judul\n\n## Judul Sementara\n{title}\n\n## Domain\n{domain}\n\n## Target Publikasi\n{target_level}\n\n## Kerangka {framework}\n- Population/Problem: {base_pop}\n- Intervention/Exposure: {base_int}\n- Comparator: {base_comp}\n- Outcome: {base_out}\n- Study Design: {study_design or 'Experimental/observational studies sesuai kriteria inklusi'}\n\n## Research Question\n{research_questions[0]}\n\n## Kriteria Inklusi Awal\n{inclusion}\n\n## Kriteria Eksklusi Awal\n{exclusion}\n\n## Database yang Disarankan\n{', '.join(DOMAIN_PROFILES.get(domain, DOMAIN_PROFILES['Peternakan'])['databases'])}\n\n## Search String Awal\n```text\n{search_string}\n```\n\n## Quality Assessment yang Disarankan\n{DOMAIN_PROFILES.get(domain, DOMAIN_PROFILES['Peternakan'])['quality_tool']}\n\n## Rencana Sintesis\nSintesis dilakukan secara naratif dengan membandingkan arah efek, variasi outcome, desain studi, kualitas metodologi, dan konteks agro/peternakan. Meta-analysis dapat dilakukan apabila satuan outcome, desain studi, dan ukuran efek cukup homogen.\n"""
+
+    return {
+        "score": score,
+        "readiness": readiness,
+        "domain": domain,
+        "framework": framework,
+        "sub_scores": sub_scores,
+        "strengths": strengths or ["Belum ada kekuatan utama yang terdeteksi; lengkapi komponen judul dan PICOS/PECO."],
+        "weaknesses": weaknesses or ["Tidak ada kelemahan besar yang terdeteksi oleh pemeriksaan otomatis."],
+        "suggested_titles": suggested_titles,
+        "research_questions": research_questions,
+        "auto_terms": auto_terms,
+        "search_string": search_string,
+        "recommended_databases": DOMAIN_PROFILES.get(domain, DOMAIN_PROFILES["Peternakan"])["databases"],
+        "quality_tool": DOMAIN_PROFILES.get(domain, DOMAIN_PROFILES["Peternakan"])["quality_tool"],
+        "inclusion": inclusion,
+        "exclusion": exclusion,
+        "protocol": protocol,
+    }
+
+
+def apply_analyzer_to_project(result: dict, analyzer: dict):
+    p = st.session_state.project.copy()
+    p["title"] = analyzer.get("working_title", p.get("title", ""))
+    p["domain"] = result.get("domain", analyzer.get("domain", p.get("domain", "")))
+    p["review_type"] = "Systematic Review and Meta-Analysis" if "meta" in analyzer.get("working_title", "").lower() else "Systematic Review"
+    p["research_question"] = result.get("research_questions", [p.get("research_question", "")])[0]
+    p["population"] = analyzer.get("population", "")
+    p["intervention"] = analyzer.get("intervention", "")
+    p["comparator"] = analyzer.get("comparator", "")
+    p["outcome"] = analyzer.get("outcome", "")
+    p["study_design"] = analyzer.get("study_design", "")
+    st.session_state.project = p
+    st.session_state.criteria = {
+        "inclusion": result.get("inclusion", st.session_state.criteria.get("inclusion", "")),
+        "exclusion": result.get("exclusion", st.session_state.criteria.get("exclusion", "")),
+    }
+    st.session_state.terms = result.get("auto_terms", st.session_state.terms)
+
+
 def sync_quality_and_extraction():
     articles = st.session_state.articles
     if articles.empty:
@@ -338,6 +573,95 @@ def download_df_button(label: str, df: pd.DataFrame, filename: str):
     st.download_button(label, csv, filename, "text/csv", use_container_width=True)
 
 
+def page_title_analyzer():
+    st.header("0. Title & Protocol Analyzer")
+    st.write("Modul ini membantu peneliti menilai kelayakan judul, menyusun PICOS/PECO, membuat research question, Boolean search, rekomendasi database, dan draft protocol awal.")
+
+    analyzer = st.session_state.title_analyzer.copy()
+
+    with st.form("title_analyzer_form"):
+        analyzer["working_title"] = st.text_area("Judul sementara", value=analyzer.get("working_title", ""), height=85)
+        cols = st.columns(4)
+        domain_options = ["Otomatis", "Peternakan", "Agro/Agronomi", "Perikanan/Akuakultur", "Pangan", "Lingkungan"]
+        current_domain = analyzer.get("domain", "Peternakan")
+        if current_domain not in domain_options:
+            current_domain = "Peternakan"
+        analyzer["domain"] = cols[0].selectbox("Bidang", domain_options, index=domain_options.index(current_domain))
+        analyzer["framework"] = cols[1].selectbox("Kerangka", ["PICOS", "PECO", "PICO"], index=["PICOS", "PECO", "PICO"].index(analyzer.get("framework", "PICOS")) if analyzer.get("framework", "PICOS") in ["PICOS", "PECO", "PICO"] else 0)
+        analyzer["target_level"] = cols[2].selectbox("Target", ["Q1/Q2", "Q2/Q3", "Sinta/Scopus awal", "Internal/Kampus"], index=["Q1/Q2", "Q2/Q3", "Sinta/Scopus awal", "Internal/Kampus"].index(analyzer.get("target_level", "Q1/Q2")) if analyzer.get("target_level", "Q1/Q2") in ["Q1/Q2", "Q2/Q3", "Sinta/Scopus awal", "Internal/Kampus"] else 0)
+        analyzer["geographical_scope"] = cols[3].selectbox("Cakupan", ["Global", "Asia", "Indonesia", "Lokal/Daerah"], index=["Global", "Asia", "Indonesia", "Lokal/Daerah"].index(analyzer.get("geographical_scope", "Global")) if analyzer.get("geographical_scope", "Global") in ["Global", "Asia", "Indonesia", "Lokal/Daerah"] else 0)
+
+        st.subheader("Input komponen PICOS/PECO")
+        c1, c2 = st.columns(2)
+        analyzer["population"] = c1.text_input("Population / Problem", value=analyzer.get("population", ""), placeholder="contoh: broiler chickens, maize, paddy soil")
+        analyzer["intervention"] = c2.text_input("Intervention / Exposure", value=analyzer.get("intervention", ""), placeholder="contoh: probiotic supplementation, biochar application")
+        analyzer["comparator"] = c1.text_input("Comparator", value=analyzer.get("comparator", ""), placeholder="contoh: control diet, non-biochar soil")
+        analyzer["outcome"] = c2.text_input("Outcome", value=analyzer.get("outcome", ""), placeholder="contoh: FCR, body weight gain, yield, soil organic carbon")
+        analyzer["study_design"] = c1.text_input("Study design", value=analyzer.get("study_design", ""), placeholder="contoh: experimental studies, field trials")
+        analyzer["year_range"] = c2.text_input("Rentang tahun artikel", value=analyzer.get("year_range", "2015-2026"))
+
+        submitted = st.form_submit_button("Analisis judul dan buat protocol otomatis", use_container_width=True)
+
+    if submitted:
+        st.session_state.title_analyzer = analyzer
+        st.session_state.analyzer_result = analyze_review_title(analyzer)
+        st.success("Analisis selesai. Hasil otomatis ditampilkan di bawah.")
+
+    result = st.session_state.get("analyzer_result", {})
+    if not result:
+        result = analyze_review_title(analyzer)
+        st.session_state.analyzer_result = result
+
+    st.subheader("Skor Kesiapan Judul")
+    c1, c2, c3 = st.columns([1, 2, 2])
+    c1.metric("Skor", f"{result.get('score', 0)}/100")
+    c2.info(result.get("readiness", "Belum dianalisis"))
+    c3.write(f"**Domain terdeteksi:** {result.get('domain', '-')}")
+
+    score_df = pd.DataFrame([{"Aspek": k, "Skor": v} for k, v in result.get("sub_scores", {}).items()])
+    if not score_df.empty:
+        st.bar_chart(score_df.set_index("Aspek"))
+
+    left, right = st.columns(2)
+    with left:
+        st.subheader("Kekuatan")
+        for item in result.get("strengths", []):
+            st.success(item)
+    with right:
+        st.subheader("Kelemahan yang perlu diperbaiki")
+        for item in result.get("weaknesses", []):
+            st.warning(item)
+
+    st.subheader("Rekomendasi Judul yang Lebih Kuat")
+    for i, title in enumerate(result.get("suggested_titles", []), start=1):
+        st.markdown(f"**Opsi {i}:** {title}")
+
+    st.subheader("Research Question Otomatis")
+    for i, rq in enumerate(result.get("research_questions", []), start=1):
+        st.markdown(f"{i}. {rq}")
+
+    st.subheader("Database dan Quality Assessment yang Disarankan")
+    d1, d2 = st.columns(2)
+    d1.markdown("**Database:**\n" + "\n".join([f"- {db}" for db in result.get("recommended_databases", [])]))
+    d2.markdown(f"**Quality assessment:**\n\n{result.get('quality_tool', '-')}")
+
+    st.subheader("Boolean Search Otomatis")
+    st.code(result.get("search_string", ""), language="text")
+
+    st.subheader("Draft Protocol Awal")
+    st.download_button("Download draft_protocol_otomatis.md", result.get("protocol", "").encode("utf-8"), "draft_protocol_otomatis.md", "text/markdown", use_container_width=True)
+    st.markdown(result.get("protocol", ""))
+
+    st.subheader("Terapkan ke modul sistem")
+    st.write("Tombol ini akan mengisi otomatis menu Protocol & PICOS serta Search Strategy berdasarkan hasil analisis judul.")
+    if st.button("Gunakan hasil analisis untuk mengisi Protocol & Search Strategy", use_container_width=True):
+        apply_analyzer_to_project(result, analyzer)
+        st.success("Hasil analisis sudah diterapkan ke Protocol & PICOS serta Search Strategy.")
+
+    export_payload = json.dumps({"input": analyzer, "analysis": result}, indent=2, ensure_ascii=False)
+    st.download_button("Download hasil_analisis_judul.json", export_payload.encode("utf-8"), "hasil_analisis_judul.json", "application/json", use_container_width=True)
+
+
 def page_dashboard():
     st.title(f"🌾 {APP_TITLE}")
     st.caption("Aplikasi pendamping untuk menyusun systematic review bidang agro, peternakan, pangan, agronomi, perikanan, dan lingkungan.")
@@ -359,13 +683,13 @@ def page_dashboard():
     st.subheader("Alur kerja yang disarankan")
     st.markdown(
         """
-        1. Isi **Protocol & PICOS** agar pertanyaan review jelas.  
-        2. Susun **Search Strategy** dengan Boolean string.  
-        3. Impor artikel dari CSV/XLSX/RIS pada menu **Import & Screening**.  
-        4. Lakukan screening dan catat alasan eksklusi.  
-        5. Pantau jumlah artikel di **PRISMA Flow**.  
-        6. Nilai kualitas studi dan isi data extraction.  
-        7. Export CSV, protocol, dan draft methods.
+        1. Mulai dari **Title & Protocol Analyzer** untuk menilai kelayakan judul, membuat PICOS/PECO, dan menyusun protocol awal.  
+        2. Cek serta rapikan **Protocol & PICOS** agar pertanyaan review jelas.  
+        3. Susun atau revisi **Search Strategy** dengan Boolean string.  
+        4. Impor artikel dari CSV/XLSX/RIS pada menu **Import & Screening**.  
+        5. Lakukan screening dan catat alasan eksklusi.  
+        6. Pantau jumlah artikel di **PRISMA Flow**.  
+        7. Nilai kualitas studi, isi data extraction, lalu export paket naskah.
         """
     )
 
@@ -719,6 +1043,7 @@ def main():
         "Menu",
         [
             "Dashboard",
+            "Title & Protocol Analyzer",
             "Protocol & PICOS",
             "Search Strategy",
             "Import & Screening",
@@ -734,6 +1059,8 @@ def main():
 
     if page == "Dashboard":
         page_dashboard()
+    elif page == "Title & Protocol Analyzer":
+        page_title_analyzer()
     elif page == "Protocol & PICOS":
         page_protocol()
     elif page == "Search Strategy":
