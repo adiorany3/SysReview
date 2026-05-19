@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 APP_TITLE = "Agro Systematic Review Builder"
-APP_VERSION = "Auto-Sync Integrated Workflow Edition"
+APP_VERSION = "Auto-Sync Integrated Workflow + Safe Reset Edition"
 
 ARTICLE_COLUMNS = [
     "id", "title", "authors", "year", "journal", "doi", "country", "study_design",
@@ -1336,6 +1336,24 @@ def download_df_button(label, df, filename):
     )
 
 
+
+def reset_project_state():
+    """Reset all user-entered project data and return the app to its initial state."""
+    keys_to_remove = [
+        "project", "criteria", "terms", "articles", "quality", "extraction",
+        "prisma_manual", "notes", "sync_config", "reset_confirm_checkbox",
+        "reset_confirm_text", "reset_success_message",
+    ]
+    for key in keys_to_remove:
+        if key in st.session_state:
+            del st.session_state[key]
+    # Clean possible widget-generated reset keys without touching Streamlit internals.
+    for key in list(st.session_state.keys()):
+        if str(key).startswith("reset_"):
+            del st.session_state[key]
+    init_state()
+    st.session_state.reset_success_message = True
+
 def render_sidebar():
     checks, pct = completion_status()
     st.sidebar.title("Workflow")
@@ -1351,6 +1369,18 @@ def render_sidebar():
     if st.sidebar.button("🔄 Sinkronkan semua modul", use_container_width=True):
         sync_downstream_from_project(reason="tombol sidebar")
         st.sidebar.success("Semua menu sudah mengikuti isi menu sebelumnya.")
+
+    with st.sidebar.expander("⚠️ Hapus / reset data project"):
+        st.warning("Reset akan menghapus judul, protocol, search terms, artikel, PRISMA, quality assessment, data extraction, catatan, dan konfigurasi sementara. Gunakan export terlebih dahulu jika data masih diperlukan.")
+        confirm_checkbox = st.checkbox("Saya paham bahwa semua data project sementara akan dihapus.", key="reset_confirm_checkbox")
+        confirm_text = st.text_input("Ketik RESET untuk konfirmasi", key="reset_confirm_text", placeholder="RESET")
+        reset_ready = confirm_checkbox and confirm_text.strip().upper() == "RESET"
+        if st.button("🗑️ Hapus data dan kembali ke awal", use_container_width=True, disabled=not reset_ready):
+            reset_project_state()
+            st.rerun()
+        if not reset_ready:
+            st.caption("Tombol hapus aktif setelah checkbox dicentang dan kata RESET diketik dengan benar.")
+
     st.sidebar.caption(APP_VERSION)
 
 
@@ -1721,6 +1751,9 @@ def page_insight_export():
 def main():
     init_state()
     render_sidebar()
+    if st.session_state.get("reset_success_message"):
+        st.success("Data project sudah dihapus. Tampilan dan isi sistem telah dikembalikan ke kondisi awal.")
+        st.session_state.reset_success_message = False
     page = st.sidebar.radio(
         "Menu utama",
         [

@@ -4,7 +4,7 @@ Aplikasi Streamlit untuk membantu peneliti bidang agro, peternakan, pangan, agro
 
 ## Versi ini
 
-**Auto-Sync Integrated Workflow Edition**
+**Auto-Sync Integrated Workflow + Safe Reset Edition**
 
 Versi ini memperkuat integrasi antarmenu. Isi dari menu sebelumnya menjadi dasar otomatis untuk menu berikutnya. Ketika peneliti mengubah judul, bidang, kerangka PICO/PICOS/PECO, population, intervention/exposure, comparator, outcome, atau study design, sistem dapat langsung memperbarui Protocol, Search Strategy, Screening Score, PRISMA, Quality Assessment, Data Extraction, Evidence Insight Report, dan Export Package.
 
@@ -27,6 +27,7 @@ Di sidebar tersedia:
 - **Auto-sync antarmenu**: mengaktifkan sinkronisasi otomatis.
 - **Timpa isi otomatis**: memperbarui ulang research question, criteria, dan search terms dari menu sebelumnya. Matikan opsi ini apabila ingin mempertahankan edit manual.
 - **Sinkronkan semua modul**: tombol untuk menyamakan seluruh menu dengan data terbaru.
+- **Hapus / reset data project**: tombol aman untuk mengembalikan aplikasi ke kondisi awal. Tombol ini hanya aktif setelah pengguna mencentang konfirmasi dan mengetik kata `RESET`.
 
 ## Fitur utama
 
@@ -86,6 +87,12 @@ Di sidebar tersedia:
    - Project state JSON.
    - Semua hasil bisa diekspor sebagai ZIP dari aplikasi.
 
+9. **Safe Reset Data**
+   - Menghapus seluruh data project sementara.
+   - Mengembalikan judul, protocol, search terms, artikel, PRISMA, quality assessment, extraction, notes, dan konfigurasi ke tampilan awal.
+   - Dilengkapi konfirmasi dua langkah agar tidak terhapus secara tidak sengaja.
+   - Disarankan melakukan export ZIP terlebih dahulu sebelum reset jika data masih diperlukan.
+
 ## Cara menjalankan lokal
 
 ```bash
@@ -112,6 +119,7 @@ streamlit run app.py
 7. Lakukan screening. PRISMA otomatis berubah.
 8. Isi quality assessment dan data extraction untuk artikel include.
 9. Buka Insight & Export untuk melihat laporan insight dan mengunduh seluruh hasil.
+10. Jika ingin memulai project baru, buka sidebar **Hapus / reset data project**, centang konfirmasi, ketik `RESET`, lalu tekan tombol hapus.
 
 ## Catatan penting
 
