@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 APP_TITLE = "Agro & Biosystems Systematic Review Builder"
-APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + SlashAI Chat Completions + AI Usage Guidance"
+APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + SlashAI Chat Completions + Manual AI Prompt Copy"
 SLASHAI_DEFAULT_API_BASE = "https://api.slashai.my.id"
 SLASHAI_DEFAULT_CHAT_COMPLETIONS_ENDPOINT = "https://api.slashai.my.id/v1/chat/completions"
 
@@ -1925,6 +1925,12 @@ def make_ai_usage_guide_markdown() -> str:
         "- Beri instruksi tambahan yang spesifik, misalnya target Q1/Q2, bidang, komoditas, bagian naskah yang ingin diperbaiki, dan batas panjang output.",
         "- Jangan meminta AI membuat sitasi atau angka baru yang belum ada pada data project.",
         "- Validasi semua hasil AI dengan artikel asli dan kaidah PRISMA/ROSES sebelum digunakan dalam naskah.",
+        "",
+        "## 4. Copy-paste manual ke ChatGPT Web tanpa API key",
+        "- Bagian Ringkasan dan Prompt Manual tetap muncul walaupun Online AI Mode belum aktif atau API key belum diisi.",
+        "- Peneliti dapat memilih jenis insight, kedalaman, fokus output, dan instruksi tambahan, lalu menyalin prompt siap pakai ke ChatGPT Web.",
+        "- Cara ini berguna untuk pengguna yang memiliki akses ChatGPT Web tetapi tidak memiliki API key, atau tidak ingin menjalankan request API dari aplikasi Streamlit.",
+        "- Tombol Buat AI Insight Online hanya aktif ketika Online AI Mode aktif dan API key pribadi sudah diisi.",
     ])
     return "\n".join(lines)
 
@@ -2854,31 +2860,31 @@ Aturan penting:
 
 
 def render_online_ai_insight_panel(location: str = ""):
-    """Render optional online AI insight tools using a temporary personal API key."""
+    """Render AI insight support.
+
+    The project summary and ready-to-copy prompt are always shown, even when
+    the user does not activate Online AI Mode or does not enter an API key.
+    This allows users to copy the same context into ChatGPT Web or another
+    AI chat manually without exposing/storing any API credential.
+    """
     ai_cfg = st.session_state.get("ai_config", {})
     mode = ai_cfg.get("mode", "Offline Mode")
     api_key = get_personal_api_key()
     model, model_source = get_effective_ai_model(api_key)
 
     st.subheader("Online AI Insight Opsional")
-    st.caption("Fitur ini opsional. Tanpa API key, seluruh sistem tetap berjalan menggunakan Offline Mode berbasis rule, checklist, dan template. Online Mode default memakai API kompatibel OpenAI dari SlashAI: POST https://api.slashai.my.id/v1/chat/completions dengan Authorization: Bearer <key>. Model dikirim pada body `model` dan header `model` untuk kompatibilitas SlashAI.")
+    st.caption(
+        "Fitur API bersifat opsional. Tanpa API key, seluruh sistem tetap berjalan menggunakan Offline Mode berbasis rule, checklist, dan template. "
+        "Ringkasan data dan prompt siap-copy tetap ditampilkan agar pengguna bisa menyalinnya ke ChatGPT Web secara manual. "
+        "Jika API aktif, sistem memakai format OpenAI-compatible Chat Completions: POST https://api.slashai.my.id/v1/chat/completions dengan Authorization: Bearer <key>."
+    )
 
-    if mode != "Online AI Mode":
-        st.info("Online AI Mode belum aktif. Aktifkan dari sidebar bila ingin memakai API key pribadi sementara.")
-        return
-
-    if not api_key:
-        st.warning("Online AI Mode aktif, tetapi API key pribadi belum diisi di sidebar. Masukkan API key atau kembali ke Offline Mode.")
-        return
-
-    st.success("Online AI Mode aktif menggunakan API key pribadi dari sesi ini. API key tidak disimpan ke project state, ZIP export, XLSX, DOCX, atau Markdown.")
-    st.caption(f"Model yang akan dipakai: `{model}` ({model_source}). Data project hanya dikirim saat Anda menekan tombol insight.")
-    st.caption("Pastikan tidak ada data sensitif yang tidak ingin Anda kirim ke layanan API.")
-
+    # These controls are useful both for API calls and for manual copy-paste to ChatGPT Web.
     task = st.selectbox(
-        "Pilih jenis insight online",
+        "Pilih jenis insight yang ingin dibuat",
         ["Novelty & Gap Insight", "Discussion Draft", "Reviewer Simulation", "Manuscript Improvement Plan", "Meta-analysis Advice"],
         key=f"ai_task_select_{location}",
+        help="Pilihan ini dipakai untuk menyusun prompt, baik untuk API maupun untuk copy-paste manual ke ChatGPT Web.",
     )
     render_ai_task_suggestions(task)
 
@@ -2915,16 +2921,60 @@ def render_online_ai_insight_panel(location: str = ""):
             "Contoh: Fokuskan pada bidang Teknik Pertanian dan Biosistem; buat output untuk target jurnal Q2; "
             "jangan terlalu panjang; beri rekomendasi perbaikan methods dan discussion; jangan buat sitasi baru."
         ),
-        help="Opsional. Isi arahan spesifik agar output AI lebih sesuai dengan kebutuhan project.",
+        help="Opsional. Isi arahan spesifik agar output AI lebih sesuai dengan kebutuhan project. Instruksi ini juga masuk ke prompt siap copy.",
     )
 
-    with st.expander("Lihat ringkasan data yang akan dikirim ke API", expanded=False):
-        st.code(build_ai_project_context(max_records=10), language="json")
+    project_context = build_ai_project_context(max_records=10)
+    manual_prompt = make_ai_task_prompt(task)
 
-    if st.button("🤖 Buat AI Insight Online", key=f"make_ai_insight_{location}", use_container_width=True):
-        prompt = make_ai_task_prompt(task)
+    st.markdown("### Ringkasan dan Prompt Manual")
+    st.info(
+        "Bagian ini selalu muncul walaupun API key tidak diisi. Salin prompt di bawah ke ChatGPT Web atau layanan AI lain jika ingin mendapatkan insight manual."
+    )
+    with st.expander("📋 Lihat ringkasan data project untuk API / ChatGPT Web", expanded=False):
+        st.code(project_context, language="json")
+        st.download_button(
+            "Download ringkasan project (.json)",
+            project_context.encode("utf-8"),
+            "ai_project_context.json",
+            "application/json",
+            use_container_width=True,
+            key=f"download_ai_context_{location}",
+        )
+
+    st.text_area(
+        "Prompt siap copy ke ChatGPT Web / API",
+        value=manual_prompt,
+        height=360,
+        key=f"manual_ai_prompt_preview_{location}",
+        help="Salin seluruh prompt ini ke ChatGPT Web untuk memperoleh insight tambahan tanpa memakai API key di aplikasi.",
+    )
+    st.download_button(
+        "Download prompt siap copy (.txt)",
+        manual_prompt.encode("utf-8"),
+        f"prompt_{re.sub(r'[^a-zA-Z0-9]+', '_', task).strip('_').lower()}.txt",
+        "text/plain",
+        use_container_width=True,
+        key=f"download_manual_prompt_{location}",
+    )
+
+    # Online API controls remain optional and are only executed on button click.
+    st.markdown("### Jalankan lewat API Opsional")
+    if mode != "Online AI Mode":
+        st.info("Online AI Mode belum aktif. Insight tetap bisa diperoleh dengan menyalin prompt di atas ke ChatGPT Web. Aktifkan Online AI Mode dari sidebar bila ingin menjalankan langsung lewat API pribadi.")
+        api_ready = False
+    elif not api_key:
+        st.warning("Online AI Mode aktif, tetapi API key pribadi belum diisi di sidebar. Prompt manual tetap bisa disalin ke ChatGPT Web.")
+        api_ready = False
+    else:
+        st.success("Online AI Mode aktif menggunakan API key pribadi dari sesi ini. API key tidak disimpan ke project state, ZIP export, XLSX, DOCX, atau Markdown.")
+        st.caption(f"Model yang akan dipakai: `{model}` ({model_source}). Data project hanya dikirim saat Anda menekan tombol insight.")
+        st.caption("Pastikan tidak ada data sensitif yang tidak ingin Anda kirim ke layanan API.")
+        api_ready = True
+
+    if st.button("🤖 Buat AI Insight Online", key=f"make_ai_insight_{location}", use_container_width=True, disabled=not api_ready):
         with st.spinner("Membuat AI insight online berdasarkan data project..."):
-            ok, result = call_openai_responses_api(api_key, model, prompt, get_personal_api_base_url())
+            ok, result = call_openai_responses_api(api_key, model, manual_prompt, get_personal_api_base_url())
         if ok:
             st.session_state.ai_outputs[task] = result
             st.success("AI insight berhasil dibuat.")

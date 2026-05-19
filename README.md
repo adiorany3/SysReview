@@ -351,3 +351,14 @@ Contoh instruksi tambahan yang bisa dimasukkan user:
 ```text
 Fokuskan pada bidang Teknik Pertanian dan Biosistem. Buat output untuk target jurnal Q2. Jangan membuat sitasi baru. Beri rekomendasi perbaikan metode PRISMA, quality assessment, dan discussion secara praktis.
 ```
+
+## Perbaikan: Ringkasan dan Prompt Manual Tetap Muncul Tanpa API
+
+Pada versi ini, menu **Online AI Insight Opsional** tidak lagi menyembunyikan ringkasan data ketika API key belum diisi. Sistem sekarang selalu menampilkan:
+
+- ringkasan data project dalam format JSON;
+- prompt siap copy untuk ChatGPT Web/API;
+- tombol download `ai_project_context.json`;
+- tombol download prompt `.txt`.
+
+Dengan demikian, pengguna yang tidak memiliki API key atau hanya memiliki akses ChatGPT Web tetap bisa menyalin prompt dari aplikasi, menempelkannya ke ChatGPT Web, lalu memperoleh insight tambahan secara manual. Tombol **Buat AI Insight Online** tetap hanya aktif jika Online AI Mode aktif dan API key pribadi sudah diisi.

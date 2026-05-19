@@ -60,3 +60,15 @@ Contoh instruksi tambahan:
 Lengkapi minimal judul, framework, population, intervention/exposure, comparator, outcome, study design, kriteria inklusi-eksklusi, dan beberapa artikel. Untuk insight yang lebih tajam, lengkapi juga screening, PRISMA, quality assessment, dan data extraction.
 
 Hindari meminta AI membuat sitasi, angka, jumlah artikel, atau kesimpulan yang belum ada di data project. Hasil AI harus tetap divalidasi oleh peneliti dengan artikel asli dan kaidah PRISMA/ROSES.
+
+## 4. Copy-paste manual ke ChatGPT Web tanpa API key
+
+Pada versi terbaru, bagian **Ringkasan dan Prompt Manual** tetap muncul walaupun pengguna tidak mengaktifkan Online AI Mode dan tidak mengisi API key. Peneliti dapat:
+
+1. memilih jenis insight, kedalaman output, dan fokus output;
+2. menambahkan instruksi khusus;
+3. membuka **Lihat ringkasan data project untuk API / ChatGPT Web**;
+4. menyalin **Prompt siap copy ke ChatGPT Web / API**;
+5. menempelkan prompt tersebut ke ChatGPT Web atau layanan AI lain secara manual.
+
+Cara ini berguna untuk pengguna yang memiliki akses ChatGPT Web, tetapi tidak memiliki API key atau tidak ingin mengirim data lewat API dari aplikasi Streamlit.
