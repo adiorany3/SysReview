@@ -78,7 +78,7 @@ Contoh otomatis tersedia untuk:
 ### 9. Optional Personal AI Insight + SlashAI Model Selector
 - Default sistem tetap **Offline Mode** tanpa API.
 - Pengguna dapat mengaktifkan **Online AI Mode** dan memasukkan API Key/Bearer token pribadi secara sementara.
-- API key dimasukkan melalui input password di sidebar, sedangkan **API Base URL** dapat diisi sesuai provider. Sistem memakai format `POST {api-base}/v1/chat/completions` dengan header `Authorization: Bearer <your-key>`.
+- API key dimasukkan melalui input password di sidebar, sedangkan **API Base URL** dapat diisi sesuai provider. Sistem memakai format `POST https://api.slashai.my.id/v1/chat/completions` dengan header `Authorization: Bearer <your-key>`.
 - Untuk kompatibilitas provider SlashAI/OpenAI-compatible, model dikirim pada dua tempat: field body JSON `model` dan header `model: slashai/<nama>`.
 - API key dan API Base URL tidak disimpan ke `.srproj.json`, ZIP export, XLSX, DOCX, Markdown, atau kode aplikasi.
 - Tersedia tombol **Hapus API key dari sesi ini** yang juga menghapus cache daftar model.
@@ -86,7 +86,7 @@ Contoh otomatis tersedia untuk:
   - **Auto pilih model hemat biaya**: default memakai `slashai/gpt-5.5-instant`, lalu mencari model ringan/mini/nano/flash jika daftar model API tersedia.
   - **Auto pilih model kualitas tinggi**: default memakai `slashai/gpt-5.5`, lalu mencari model kualitas tinggi seperti `slashai/gpt-5.4-pro`, Claude Sonnet/Opus terbaru, Gemini Pro, atau model pro lain jika tersedia.
   - **Pilih manual**: pengguna memilih dari daftar model API jika endpoint `/v1/models` tersedia. Jika tidak, sistem menampilkan daftar bawaan SlashAI yang sudah dimasukkan ke aplikasi.
-- Tombol **Cek model tersedia dari API key** membaca daftar model text-generation dari endpoint `GET {api-base}/v1/models` bila provider mendukung. Jika tidak mendukung, user tetap bisa memilih dari daftar bawaan SlashAI atau mengetik model manual.
+- Tombol **Cek model tersedia dari API key** membaca daftar model text-generation dari endpoint `GET https://api.slashai.my.id/v1/models` bila provider mendukung. Jika tidak mendukung, user tetap bisa memilih dari daftar bawaan SlashAI atau mengetik model manual.
 - Jika daftar model belum dicek atau gagal dibaca, sistem memakai daftar bawaan SlashAI dan fallback default agar fitur tetap bisa dipakai.
 - Insight online yang dapat dibuat:
   - Novelty & Gap Insight
@@ -161,7 +161,7 @@ Untuk aplikasi Streamlit online yang digunakan banyak orang, jangan menanam API 
 Format request Online AI yang digunakan sistem:
 
 ```text
-POST {api-base}/v1/chat/completions
+POST https://api.slashai.my.id/v1/chat/completions
 Authorization: Bearer <your-key>
 Content-Type: application/json
 model: slashai/<nama-model>
@@ -187,8 +187,8 @@ Body utama yang dikirim:
    - **Auto pilih model hemat biaya** untuk penggunaan lebih ekonomis.
    - **Auto pilih model kualitas tinggi** untuk insight yang lebih kuat.
    - **Pilih manual** untuk menentukan model sendiri.
-4. Masukkan API Key pribadi/Bearer token pada kolom password dan isi **API Base URL**. Untuk SlashAI/OpenAI-compatible provider, isi base URL tanpa endpoint akhir, misalnya `https://api-base`. Jika tidak sengaja menempelkan endpoint penuh `{api-base}/v1/chat/completions`, sistem akan menormalkannya otomatis.
-5. Klik **Cek model tersedia dari API key** agar sistem mencoba membaca daftar model dari `GET {api-base}/v1/models`. Jika gagal, pilih dari daftar bawaan SlashAI atau tulis model manual.
+4. Masukkan API Key pribadi/Bearer token pada kolom password dan isi **API Base URL**. Default sudah memakai endpoint SlashAI `https://api.slashai.my.id/v1/chat/completions`. Pengguna boleh mengisi base URL `https://api.slashai.my.id`, `https://api.slashai.my.id/v1`, atau endpoint penuh `https://api.slashai.my.id/v1/chat/completions`; sistem akan menormalkannya otomatis.
+5. Klik **Cek model tersedia dari API key** agar sistem mencoba membaca daftar model dari `GET https://api.slashai.my.id/v1/models`. Jika gagal, pilih dari daftar bawaan SlashAI atau tulis model manual.
 6. Jika memakai mode manual, pilih model dari daftar atau tulis model secara manual, misalnya `slashai/gpt-5.5`, `slashai/gpt-5.5-instant`, atau `slashai/claude-sonnet-4.7`.
 7. Buka tab **Online AI Insight** pada Q-Level Tools atau halaman Insight & Export.
 8. Pilih jenis insight dan klik **Buat AI Insight Online**.
@@ -200,7 +200,7 @@ API key dan API Base URL bersifat sementara pada sesi Streamlit dan sengaja tida
 
 ## Daftar Model Bawaan SlashAI
 
-Aplikasi sudah memuat daftar model bawaan SlashAI sebagai fallback ketika endpoint `GET {api-base}/v1/models` tidak tersedia. Rekomendasi cepat:
+Aplikasi sudah memuat daftar model bawaan SlashAI sebagai fallback ketika endpoint `GET https://api.slashai.my.id/v1/models` tidak tersedia. Rekomendasi cepat:
 
 - Hemat biaya/cepat: `slashai/gpt-5.5-instant`, `slashai/gpt-5.4-nano`, `slashai/gpt-5.4-mini`, `slashai/claude-haiku-4.5`, `slashai/gemini-3-flash`, `slashai/deepseek-v4-flash`.
 - Kualitas tinggi: `slashai/gpt-5.5`, `slashai/gpt-5.4-pro`, `slashai/claude-sonnet-4.7`, `slashai/claude-opus-4.7`, `slashai/gemini-3.1-pro`, `slashai/deepseek-v4-pro`.

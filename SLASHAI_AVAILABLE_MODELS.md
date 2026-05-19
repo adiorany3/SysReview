@@ -1,9 +1,9 @@
 # Daftar Model Bawaan SlashAI
 
-Aplikasi memakai daftar ini sebagai fallback untuk **Online AI Insight** ketika endpoint `GET {api-base}/v1/models` tidak tersedia atau gagal dibaca. Request chat tetap memakai format:
+Aplikasi memakai daftar ini sebagai fallback untuk **Online AI Insight** ketika endpoint `GET https://api.slashai.my.id/v1/models` tidak tersedia atau gagal dibaca. Request chat tetap memakai format:
 
 ```text
-POST {api-base}/v1/chat/completions
+POST https://api.slashai.my.id/v1/chat/completions
 Authorization: Bearer <your-key>
 Content-Type: application/json
 model: slashai/<nama-model>
@@ -14,6 +14,20 @@ Body juga memuat field:
 ```json
 {"model": "slashai/gpt-5.5-instant"}
 ```
+
+
+## Endpoint Default
+
+Aplikasi disetel untuk memakai endpoint kompatibel OpenAI berikut secara default:
+
+```text
+POST https://api.slashai.my.id/v1/chat/completions
+Authorization: Bearer <your-key>
+Content-Type: application/json
+model: slashai/<nama-model>
+```
+
+Pengguna tetap dapat mengganti API Base URL jika memakai gateway kompatibel lain.
 
 ## Rekomendasi Cepat
 

@@ -17,7 +17,9 @@ st.set_page_config(
 )
 
 APP_TITLE = "Agro & Biosystems Systematic Review Builder"
-APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + SlashAI/OpenAI-Compatible Chat Completions + Biosystems Edition"
+APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + SlashAI Chat Completions Endpoint + Biosystems Edition"
+SLASHAI_DEFAULT_API_BASE = "https://api.slashai.my.id"
+SLASHAI_DEFAULT_CHAT_COMPLETIONS_ENDPOINT = "https://api.slashai.my.id/v1/chat/completions"
 
 ARTICLE_COLUMNS = [
     "id", "title", "authors", "year", "journal", "doi", "country", "study_design",
@@ -1952,9 +1954,9 @@ def normalize_api_base_url(api_base: str) -> str:
     or the full endpoint `https://api-base/v1/chat/completions`. This function safely
     reduces all of them to `https://api-base`.
     """
-    base = str(api_base or "https://api.openai.com").strip().rstrip("/")
+    base = str(api_base or SLASHAI_DEFAULT_API_BASE).strip().rstrip("/")
     if not base:
-        base = "https://api.openai.com"
+        base = SLASHAI_DEFAULT_API_BASE
     lower = base.lower()
     for suffix in ["/v1/chat/completions", "/chat/completions", "/v1/models", "/models"]:
         if lower.endswith(suffix):
@@ -1968,7 +1970,7 @@ def normalize_api_base_url(api_base: str) -> str:
 
 def get_personal_api_base_url() -> str:
     """Read optional OpenAI-compatible API base URL from the current session only."""
-    return normalize_api_base_url(st.session_state.get("personal_api_base_url", "https://api.openai.com"))
+    return normalize_api_base_url(st.session_state.get("personal_api_base_url", SLASHAI_DEFAULT_API_BASE))
 
 
 def chat_completions_url(api_base: str) -> str:
@@ -2427,7 +2429,7 @@ def render_online_ai_insight_panel(location: str = ""):
     model, model_source = get_effective_ai_model(api_key)
 
     st.subheader("Online AI Insight Opsional")
-    st.caption("Fitur ini opsional. Tanpa API key, seluruh sistem tetap berjalan menggunakan Offline Mode berbasis rule, checklist, dan template. Online Mode memakai format OpenAI-compatible Chat Completions: POST {api-base}/v1/chat/completions dengan Authorization: Bearer <key>. Model dikirim pada body `model` dan header `model` untuk kompatibilitas SlashAI.")
+    st.caption("Fitur ini opsional. Tanpa API key, seluruh sistem tetap berjalan menggunakan Offline Mode berbasis rule, checklist, dan template. Online Mode default memakai API kompatibel OpenAI dari SlashAI: POST https://api.slashai.my.id/v1/chat/completions dengan Authorization: Bearer <key>. Model dikirim pada body `model` dan header `model` untuk kompatibilitas SlashAI.")
 
     if mode != "Online AI Mode":
         st.info("Online AI Mode belum aktif. Aktifkan dari sidebar bila ingin memakai API key pribadi sementara.")
@@ -2546,9 +2548,9 @@ def render_sidebar():
         )
         st.text_input(
             "API Base URL",
-            value=st.session_state.get("personal_api_base_url", "https://api.openai.com"),
+            value=st.session_state.get("personal_api_base_url", SLASHAI_DEFAULT_API_BASE),
             key="personal_api_base_url",
-            help="Isi base URL tanpa endpoint akhir. Contoh: https://api-base atau base OpenAI-compatible lain. Sistem akan memakai POST {api-base}/v1/chat/completions dan header model: slashai/<nama>.",
+            help="Default memakai endpoint SlashAI: https://api.slashai.my.id/v1/chat/completions. Boleh isi base URL (https://api.slashai.my.id), /v1, atau endpoint penuh /v1/chat/completions; sistem akan menormalkan otomatis.",
         )
         api_key = get_personal_api_key()
         st.caption(f"Endpoint chat yang digunakan: `{chat_completions_url(get_personal_api_base_url())}`")
