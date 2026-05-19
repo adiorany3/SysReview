@@ -331,3 +331,23 @@ Jika server mengembalikan pesan seperti `Deposit required to unlock premium mode
 - `slashai/Step-3.5-Flash`
 
 API key tetap tidak disimpan ke project state, export ZIP, XLSX, DOCX, atau Markdown.
+
+
+## Panduan AI Insight agar hasil lebih sesuai
+
+Versi ini menambahkan panduan di menu **Online AI Insight** agar peneliti tahu kapan memakai model hemat biaya, model kualitas tinggi, atau model manual. Pada setiap jenis insight, sistem juga menampilkan:
+
+- tujuan insight;
+- data yang sebaiknya sudah dilengkapi;
+- contoh instruksi tambahan;
+- ciri output yang baik;
+- pilihan kedalaman output: Ringkas, Standar, Mendalam;
+- fokus output, misalnya kesiapan jurnal Q-level, novelty-gap, PRISMA/ROSES, discussion, meta-analysis, atau reviewer simulation.
+
+File pendukung: `AI_USAGE_GUIDE.md`. Saat export ZIP dari aplikasi, panduan ini juga tersedia sebagai `ai_usage_guide.md`.
+
+Contoh instruksi tambahan yang bisa dimasukkan user:
+
+```text
+Fokuskan pada bidang Teknik Pertanian dan Biosistem. Buat output untuk target jurnal Q2. Jangan membuat sitasi baru. Beri rekomendasi perbaikan metode PRISMA, quality assessment, dan discussion secara praktis.
+```

@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 APP_TITLE = "Agro & Biosystems Systematic Review Builder"
-APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + SlashAI Chat Completions + Deposit-Aware Error Handling"
+APP_VERSION = "Q-Level Manuscript Builder + Save & Resume + SlashAI Chat Completions + AI Usage Guidance"
 SLASHAI_DEFAULT_API_BASE = "https://api.slashai.my.id"
 SLASHAI_DEFAULT_CHAT_COMPLETIONS_ENDPOINT = "https://api.slashai.my.id/v1/chat/completions"
 
@@ -1888,6 +1888,46 @@ def make_step_snapshot(step_name: str) -> bytes:
     state["step_snapshot"] = step_name
     return json.dumps(state, ensure_ascii=False, indent=2).encode("utf-8")
 
+
+
+def make_ai_usage_guide_markdown() -> str:
+    lines = [
+        "# Panduan Penggunaan AI Insight",
+        "",
+        "Panduan ini membantu peneliti memilih model, jenis insight, dan instruksi tambahan agar output AI lebih sesuai untuk systematic review bidang agro, peternakan, pangan, perikanan, lingkungan, serta teknik pertanian dan biosistem.",
+        "",
+        "## 1. Saran memilih model",
+    ]
+    for strategy, tips in AI_MODEL_USAGE_GUIDANCE.items():
+        lines.append(f"\n### {strategy}")
+        for tip in tips:
+            lines.append(f"- {tip}")
+    lines.extend([
+        "",
+        "## 2. Saran berdasarkan jenis insight",
+    ])
+    for task, guide in AI_TASK_GUIDANCE.items():
+        lines.append(f"\n### {task}")
+        lines.append(f"**Tujuan:** {guide.get('tujuan', '-')}")
+        lines.append(f"**Cocok digunakan jika:** {guide.get('cocok_jika', '-')}")
+        inputs = guide.get("input_utama", [])
+        if inputs:
+            lines.append("**Data yang sebaiknya dilengkapi:** " + ", ".join(inputs))
+        lines.append("**Contoh instruksi tambahan:**")
+        for example in guide.get("instruksi_contoh", []):
+            lines.append(f"- {example}")
+        lines.append(f"**Ciri output yang baik:** {guide.get('output_baik', '-')}")
+    lines.extend([
+        "",
+        "## 3. Prinsip agar hasil AI sesuai",
+        "- Lengkapi judul, framework, population, intervention/exposure, comparator, outcome, dan study design sebelum meminta insight.",
+        "- Lengkapi screening, quality assessment, dan data extraction agar AI tidak hanya memberi saran umum.",
+        "- Beri instruksi tambahan yang spesifik, misalnya target Q1/Q2, bidang, komoditas, bagian naskah yang ingin diperbaiki, dan batas panjang output.",
+        "- Jangan meminta AI membuat sitasi atau angka baru yang belum ada pada data project.",
+        "- Validasi semua hasil AI dengan artikel asli dan kaidah PRISMA/ROSES sebelum digunakan dalam naskah.",
+    ])
+    return "\n".join(lines)
+
 def make_export_zip():
     mem = BytesIO()
     with zipfile.ZipFile(mem, "w", zipfile.ZIP_DEFLATED) as z:
@@ -1895,6 +1935,7 @@ def make_export_zip():
         z.writestr("methods_template.md", make_methods_template())
         z.writestr("evidence_insight_report.md", build_insight_report())
         z.writestr("examples_and_guidance.md", make_guidance_markdown())
+        z.writestr("ai_usage_guide.md", make_ai_usage_guide_markdown())
         z.writestr("q_level_manuscript_draft.md", build_manuscript_markdown())
         z.writestr("cover_letter_template.md", make_cover_letter_markdown())
         z.writestr("q_level_manuscript_draft.docx", docx_from_markdown_bytes(build_manuscript_markdown(), "Systematic Review Draft"))
@@ -2660,6 +2701,117 @@ def test_chat_completion_connection(api_key: str, model: str, api_base: str | No
     return False, result
 
 
+
+AI_TASK_GUIDANCE = {
+    "Novelty & Gap Insight": {
+        "tujuan": "Mencari celah riset, kontribusi ilmiah, dan arah novelty yang bisa ditulis di Introduction dan Discussion.",
+        "input_utama": ["judul", "PICO/PICOS/PECO", "artikel include", "quality assessment", "data extraction", "catatan novelty"],
+        "cocok_jika": "Peneliti ingin memastikan topik tidak hanya rangkuman biasa, tetapi punya kontribusi ilmiah yang jelas.",
+        "instruksi_contoh": [
+            "Fokuskan novelty pada bidang agro tropis dan implikasi praktis untuk petani/peternak.",
+            "Bedakan gap metodologis, gap populasi/komoditas, gap outcome, dan gap wilayah penelitian.",
+            "Buatkan 3 alternatif novelty statement untuk bagian akhir Introduction.",
+        ],
+        "output_baik": "Berisi gap spesifik, alasan gap penting, bagaimana gap didukung data project, dan kalimat novelty yang tidak berlebihan.",
+    },
+    "Discussion Draft": {
+        "tujuan": "Membantu membuat narasi Discussion awal berbasis data, bukan sekadar mengulang hasil.",
+        "input_utama": ["arah efek", "outcome utama", "risk of bias", "certainty of evidence", "keterbatasan studi", "implikasi"],
+        "cocok_jika": "Data extraction dan quality assessment sudah mulai terisi sehingga AI punya bahan untuk interpretasi.",
+        "instruksi_contoh": [
+            "Susun discussion dalam 4 paragraf: pola temuan, penyebab heterogenitas, kualitas bukti, dan implikasi praktis.",
+            "Jangan membuat angka baru; gunakan istilah sebagian besar/studi terbatas hanya jika sesuai data project.",
+            "Tulis dengan gaya artikel jurnal internasional, tetapi tetap dalam Bahasa Indonesia formal.",
+        ],
+        "output_baik": "Diskusi mengaitkan temuan, mekanisme kemungkinan, heterogenitas, bias, keterbatasan, dan implikasi tanpa klaim berlebihan.",
+    },
+    "Reviewer Simulation": {
+        "tujuan": "Mensimulasikan komentar reviewer jurnal Q-level sebelum submit.",
+        "input_utama": ["protocol", "search strategy", "PRISMA", "quality assessment", "manuscript draft", "target jurnal"],
+        "cocok_jika": "Peneliti ingin mengetahui kelemahan naskah sebelum dikirim ke jurnal.",
+        "instruksi_contoh": [
+            "Berikan komentar seperti reviewer Q1/Q2: major concern, minor concern, dan rekomendasi revisi.",
+            "Nilai apakah search strategy sudah replikatif dan apakah PRISMA sudah cukup transparan.",
+            "Beri prioritas revisi dari yang paling berisiko menyebabkan desk rejection.",
+        ],
+        "output_baik": "Komentar tajam, spesifik, dapat ditindaklanjuti, dan tidak sekadar pujian umum.",
+    },
+    "Manuscript Improvement Plan": {
+        "tujuan": "Menyusun rencana perbaikan naskah dari title sampai conclusion.",
+        "input_utama": ["judul", "abstract", "methods", "results", "discussion", "checker PRISMA", "journal targeting"],
+        "cocok_jika": "Peneliti sudah punya kerangka naskah tetapi belum yakin bagian mana yang harus diperbaiki.",
+        "instruksi_contoh": [
+            "Buat rencana revisi bertahap selama 7 hari kerja.",
+            "Pisahkan perbaikan wajib, perbaikan penting, dan perbaikan opsional.",
+            "Fokuskan pada kesiapan naskah untuk jurnal Scopus Q1/Q2 bidang agro/peternakan/biosistem.",
+        ],
+        "output_baik": "Rencana praktis, berurutan, dan langsung menunjukkan bagian naskah mana yang perlu diperbaiki.",
+    },
+    "Meta-analysis Advice": {
+        "tujuan": "Menilai apakah data cukup untuk meta-analysis dan data apa yang masih kurang.",
+        "input_utama": ["mean", "SD", "n", "outcome unit", "comparator", "effect direction", "study design"],
+        "cocok_jika": "Peneliti ingin menentukan apakah review cukup narrative synthesis atau bisa dilanjutkan ke meta-analysis.",
+        "instruksi_contoh": [
+            "Cek kesiapan meta-analysis untuk outcome utama dan sebutkan data numerik yang belum lengkap.",
+            "Sarankan subgroup analysis berdasarkan dosis, komoditas, durasi, lokasi, atau jenis teknologi/perlakuan.",
+            "Jelaskan kapan sebaiknya tidak memaksakan meta-analysis karena heterogenitas terlalu tinggi.",
+        ],
+        "output_baik": "Ada diagnosis kesiapan data, outcome prioritas, data yang hilang, dan strategi sintesis yang realistis.",
+    },
+}
+
+AI_MODEL_USAGE_GUIDANCE = {
+    "Auto pilih model hemat biaya": [
+        "Gunakan untuk cek cepat, ringkasan awal, novelty sederhana, dan saran revisi singkat.",
+        "Cocok saat project masih awal dan data artikel belum banyak.",
+        "Jika hasil kurang mendalam, lengkapi data extraction lalu ulangi dengan mode kualitas tinggi atau manual.",
+    ],
+    "Auto pilih model kualitas tinggi": [
+        "Gunakan untuk draft Discussion, reviewer simulation, novelty-gap yang lebih tajam, dan manuscript improvement plan.",
+        "Cocok saat screening, quality assessment, dan extraction sudah terisi cukup lengkap.",
+        "Jika provider menolak karena deposit/premium, sistem akan mencoba fallback ringan atau gunakan mode manual.",
+    ],
+    "Pilih manual": [
+        "Gunakan saat ingin memilih model tertentu dari SlashAI atau saat model otomatis terkena pembatasan deposit.",
+        "Model flash/ringan cocok untuk cek cepat; model pro/opus/GPT premium cocok untuk analisis panjang jika akses tersedia.",
+        "Pastikan nama model memakai format lengkap, misalnya slashai/gemini-3-flash.",
+    ],
+}
+
+
+def render_ai_model_suggestions(strategy: str):
+    tips = AI_MODEL_USAGE_GUIDANCE.get(strategy, [])
+    if tips:
+        st.markdown("**Saran penggunaan model:**")
+        for tip in tips:
+            st.caption(f"• {tip}")
+    st.caption(
+        "Agar hasil sesuai, lengkapi minimal judul, framework, population, intervention/exposure, comparator, outcome, "
+        "kriteria inklusi-eksklusi, dan beberapa data artikel. AI tidak akan membuat sitasi atau angka baru jika data belum tersedia."
+    )
+
+
+def render_ai_task_suggestions(task: str):
+    guide = AI_TASK_GUIDANCE.get(task, {})
+    if not guide:
+        return
+    with st.expander("💡 Saran agar hasil AI sesuai", expanded=True):
+        st.markdown(f"**Tujuan:** {guide.get('tujuan', '-')}")
+        st.markdown(f"**Cocok digunakan jika:** {guide.get('cocok_jika', '-')}")
+        inputs = guide.get("input_utama", [])
+        if inputs:
+            st.markdown("**Data yang sebaiknya sudah dilengkapi:** " + ", ".join(inputs))
+        examples = guide.get("instruksi_contoh", [])
+        if examples:
+            st.markdown("**Contoh instruksi tambahan yang bisa diberikan:**")
+            for idx, example in enumerate(examples, start=1):
+                st.markdown(f"{idx}. {example}")
+        st.markdown(f"**Ciri output yang baik:** {guide.get('output_baik', '-')}")
+        st.info(
+            "Gunakan instruksi tambahan yang spesifik. Contoh: sebutkan target jurnal, bidang, jenis komoditas, "
+            "apakah ingin output ringkas/mendalam, dan bagian naskah mana yang ingin diperkuat."
+        )
+
 def make_ai_task_prompt(task: str) -> str:
     context = build_ai_project_context()
     task_instructions = {
@@ -2670,8 +2822,18 @@ def make_ai_task_prompt(task: str) -> str:
         "Meta-analysis Advice": "Nilai kesiapan meta-analysis. Jelaskan data apa yang kurang, outcome yang potensial, dan subgroup analysis yang disarankan.",
     }
     instruction = task_instructions.get(task, task_instructions["Novelty & Gap Insight"])
+    output_depth = st.session_state.get("ai_output_depth", "Standar")
+    target_focus = st.session_state.get("ai_target_focus", "Kesiapan jurnal Q-level")
+    extra_instruction = str(st.session_state.get("ai_user_extra_instruction", "") or "").strip()
+    extra_block = ""
+    if extra_instruction:
+        extra_block = f"\nInstruksi tambahan dari peneliti:\n{extra_instruction}\n"
     return f"""Tugas: {instruction}
 
+Preferensi output:
+- Kedalaman: {output_depth}
+- Fokus utama: {target_focus}
+{extra_block}
 Data project systematic review:
 ```json
 {context}
@@ -2683,6 +2845,11 @@ Format jawaban yang diminta:
 3. Bagian naskah yang perlu diperbaiki
 4. Rekomendasi tindakan praktis
 5. Catatan kehati-hatian agar peneliti tidak menyimpulkan berlebihan
+
+Aturan penting:
+- Jangan membuat sitasi, jumlah artikel, atau angka baru yang tidak ada pada data project.
+- Jika data belum cukup, sebutkan data apa yang harus dilengkapi peneliti.
+- Gunakan Bahasa Indonesia formal, akademik, jelas, dan bisa langsung membantu penyusunan naskah systematic review.
 """
 
 
@@ -2713,6 +2880,44 @@ def render_online_ai_insight_panel(location: str = ""):
         ["Novelty & Gap Insight", "Discussion Draft", "Reviewer Simulation", "Manuscript Improvement Plan", "Meta-analysis Advice"],
         key=f"ai_task_select_{location}",
     )
+    render_ai_task_suggestions(task)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.selectbox(
+            "Kedalaman output",
+            ["Ringkas", "Standar", "Mendalam"],
+            index=["Ringkas", "Standar", "Mendalam"].index(st.session_state.get("ai_output_depth", "Standar")) if st.session_state.get("ai_output_depth", "Standar") in ["Ringkas", "Standar", "Mendalam"] else 1,
+            key="ai_output_depth",
+            help="Ringkas untuk cek cepat, Standar untuk laporan umum, Mendalam untuk naskah jurnal yang lebih serius.",
+        )
+    with c2:
+        st.selectbox(
+            "Fokus output",
+            [
+                "Kesiapan jurnal Q-level",
+                "Perbaikan metode PRISMA/ROSES",
+                "Novelty dan research gap",
+                "Discussion dan implication",
+                "Meta-analysis readiness",
+                "Reviewer comment simulation",
+            ],
+            index=0,
+            key="ai_target_focus",
+            help="Pilih fokus agar jawaban AI lebih sesuai dengan kebutuhan peneliti saat ini.",
+        )
+
+    st.text_area(
+        "Instruksi tambahan untuk AI",
+        key="ai_user_extra_instruction",
+        height=100,
+        placeholder=(
+            "Contoh: Fokuskan pada bidang Teknik Pertanian dan Biosistem; buat output untuk target jurnal Q2; "
+            "jangan terlalu panjang; beri rekomendasi perbaikan methods dan discussion; jangan buat sitasi baru."
+        ),
+        help="Opsional. Isi arahan spesifik agar output AI lebih sesuai dengan kebutuhan project.",
+    )
+
     with st.expander("Lihat ringkasan data yang akan dikirim ke API", expanded=False):
         st.code(build_ai_project_context(max_records=10), language="json")
 
@@ -2748,7 +2953,8 @@ def reset_project_state():
         "prisma_manual", "notes", "sync_config", "ai_config", "ai_outputs",
         "personal_openai_api_key", "openai_api_key_input", "personal_api_base_url", "api_base_url_input",
         "openai_available_models", "openai_models_last_checked", "openai_models_error", "openai_models_api_base", "manual_model_select",
-        "manual_model_text", "reset_confirm_checkbox", "reset_confirm_text",
+        "manual_model_text", "ai_user_extra_instruction", "ai_output_depth", "ai_target_focus",
+        "reset_confirm_checkbox", "reset_confirm_text",
         "reset_success_message",
     ]
     for key in keys_to_remove:
@@ -2799,6 +3005,32 @@ def render_sidebar():
             key="ai_model_selection_radio",
             help="Mode otomatis memilih dari daftar model yang tersedia pada API base/API key. Jika daftar belum dicek, aplikasi memakai daftar bawaan SlashAI dan fallback default.",
         )
+        render_ai_model_suggestions(ai_cfg["model_selection"])
+
+        with st.expander("📌 Saran memilih model AI", expanded=False):
+            st.markdown(
+                """
+**Gunakan model hemat biaya** untuk:
+- cek cepat kualitas judul/protocol;
+- ringkasan novelty awal;
+- daftar revisi singkat;
+- validasi apakah data project sudah cukup.
+
+**Gunakan model kualitas tinggi** untuk:
+- draft Discussion yang lebih matang;
+- reviewer simulation;
+- manuscript improvement plan;
+- analisis gap dan implikasi yang lebih mendalam.
+
+**Gunakan pilih manual** jika:
+- model otomatis ditolak provider;
+- muncul pesan deposit/premium;
+- ingin mencoba model flash/ringan tertentu;
+- ingin memakai model yang diberikan provider tetapi belum terbaca di daftar.
+
+Agar hasil sesuai, lengkapi data project terlebih dahulu. AI akan jauh lebih berguna jika artikel include, quality assessment, dan data extraction sudah terisi.
+"""
+            )
 
         if st.button("Hapus API key dari sesi ini", use_container_width=True):
             clear_personal_api_key()
