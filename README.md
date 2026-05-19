@@ -83,8 +83,8 @@ Contoh otomatis tersedia untuk:
 - API key dan API Base URL tidak disimpan ke `.srproj.json`, ZIP export, XLSX, DOCX, Markdown, atau kode aplikasi.
 - Tersedia tombol **Hapus API key dari sesi ini** yang juga menghapus cache daftar model.
 - Tersedia tiga pilihan model:
-  - **Auto pilih model hemat biaya**: default memakai `slashai/gpt-5.5-instant`, lalu mencari model ringan/mini/nano/flash jika daftar model API tersedia.
-  - **Auto pilih model kualitas tinggi**: default memakai `slashai/gpt-5.5`, lalu mencari model kualitas tinggi seperti `slashai/gpt-5.4-pro`, Claude Sonnet/Opus terbaru, Gemini Pro, atau model pro lain jika tersedia.
+  - **Auto pilih model hemat biaya**: default memakai `slashai/gemini-3-flash`, lalu mencari model ringan/flash/nano/mini jika daftar model API tersedia.
+  - **Auto pilih model kualitas tinggi**: default memakai `slashai/gemini-3.1-pro`, lalu mencoba model kualitas tinggi non-GPT terlebih dahulu. Jika model premium ditolak karena deposit, sistem otomatis mencoba fallback ringan/flash.
   - **Pilih manual**: pengguna memilih dari daftar model API jika endpoint `/v1/models` tersedia. Jika tidak, sistem menampilkan daftar bawaan SlashAI yang sudah dimasukkan ke aplikasi.
 - Tombol **Cek model tersedia dari API key** membaca daftar model text-generation dari endpoint `GET https://api.slashai.my.id/v1/models` bila provider mendukung. Jika tidak mendukung, user tetap bisa memilih dari daftar bawaan SlashAI atau mengetik model manual.
 - Jika daftar model belum dicek atau gagal dibaca, sistem memakai daftar bawaan SlashAI dan fallback default agar fitur tetap bisa dipakai.
@@ -175,7 +175,7 @@ Body utama yang dikirim:
 
 ```json
 {
-  "model": "slashai/gpt-5.5-instant",
+  "model": "slashai/gemini-3-flash",
   "messages": [
     {"role": "system", "content": "instruksi sistematis review"},
     {"role": "user", "content": "data project dan tugas insight"}
@@ -193,7 +193,7 @@ Body utama yang dikirim:
    - **Pilih manual** untuk menentukan model sendiri.
 4. Masukkan API Key pribadi/Bearer token pada kolom password dan isi **API Base URL**. Default sudah memakai endpoint SlashAI `https://api.slashai.my.id/v1/chat/completions`. Pengguna boleh mengisi base URL `https://api.slashai.my.id`, `https://api.slashai.my.id/v1`, atau endpoint penuh `https://api.slashai.my.id/v1/chat/completions`; sistem akan menormalkannya otomatis.
 5. Klik **Cek model tersedia dari API key** agar sistem mencoba membaca daftar model dari `GET https://api.slashai.my.id/v1/models`. Jika gagal, pilih dari daftar bawaan SlashAI atau tulis model manual.
-6. Jika memakai mode manual, pilih model dari daftar atau tulis model secara manual, misalnya `slashai/gpt-5.5`, `slashai/gpt-5.5-instant`, atau `slashai/claude-sonnet-4.7`.
+6. Jika memakai mode manual, pilih model dari daftar atau tulis model secara manual, misalnya `slashai/gemini-3-flash`, `slashai/deepseek-v4-flash`, atau model lain yang tersedia.
 7. Buka tab **Online AI Insight** pada Q-Level Tools atau halaman Insight & Export.
 8. Pilih jenis insight dan klik **Buat AI Insight Online**.
 9. Setelah selesai, klik **Hapus API key dari sesi ini** bila menggunakan perangkat bersama.
@@ -206,8 +206,8 @@ API key dan API Base URL bersifat sementara pada sesi Streamlit dan sengaja tida
 
 Aplikasi sudah memuat daftar model bawaan SlashAI sebagai fallback ketika endpoint `GET https://api.slashai.my.id/v1/models` tidak tersedia. Rekomendasi cepat:
 
-- Hemat biaya/cepat: `slashai/gpt-5.5-instant`, `slashai/gpt-5.4-nano`, `slashai/gpt-5.4-mini`, `slashai/claude-haiku-4.5`, `slashai/gemini-3-flash`, `slashai/deepseek-v4-flash`.
-- Kualitas tinggi: `slashai/gpt-5.5`, `slashai/gpt-5.4-pro`, `slashai/claude-sonnet-4.7`, `slashai/claude-opus-4.7`, `slashai/gemini-3.1-pro`, `slashai/deepseek-v4-pro`.
+- Hemat biaya/cepat: `slashai/gemini-3-flash`, `slashai/deepseek-v4-flash`, `slashai/mimo-v2-flash`, `slashai/Step-3.5-Flash`, `slashai/gpt-5.4-nano`, `slashai/gpt-5-nano`.
+- Kualitas tinggi: `slashai/gemini-3.1-pro`, `slashai/deepseek-v4-pro`, `slashai/Qwen3.6-Max-Preview`, `slashai/claude-sonnet-4.7`, lalu GPT premium sebagai opsi jika akun sudah deposit/terbuka aksesnya.
 - Manual/coding-review: model Codex dan review tetap tersedia di daftar manual, tetapi untuk insight jurnal systematic review sistem lebih menyarankan model general reasoning/writing.
 
 Lihat file `SLASHAI_AVAILABLE_MODELS.md` untuk daftar lengkap.
@@ -294,8 +294,8 @@ Rekomendasi pengaturan SlashAI:
 
 ```text
 API Base URL: https://api.slashai.my.id
-Model hemat: slashai/gpt-5.5-instant
-Model kualitas tinggi: slashai/gpt-5.5
+Model hemat: slashai/gemini-3-flash
+Model kualitas tinggi: slashai/gemini-3.1-pro
 ```
 
 ## Perbaikan: Deteksi error deposit/akses premium SlashAI
@@ -319,3 +319,15 @@ Tindakan yang disarankan:
 4. jika tetap ditolak, gunakan Offline Mode. Semua fitur systematic review tetap berjalan tanpa API.
 
 Pengaturan default hemat biaya pada versi ini diarahkan ke model ringan/flash terlebih dahulu agar mengurangi risiko terkena pembatasan premium.
+
+
+## Catatan akses/deposit SlashAI
+
+Jika server mengembalikan pesan seperti `Deposit required to unlock premium models`, itu bukan berarti API key salah. Artinya model yang dipilih membutuhkan saldo/deposit atau akses premium di provider. Sistem versi ini akan mencoba fallback otomatis ke model ringan/flash pada mode otomatis. Untuk menghindari error berulang, gunakan mode manual dan pilih salah satu model ringan berikut:
+
+- `slashai/gemini-3-flash`
+- `slashai/deepseek-v4-flash`
+- `slashai/mimo-v2-flash`
+- `slashai/Step-3.5-Flash`
+
+API key tetap tidak disimpan ke project state, export ZIP, XLSX, DOCX, atau Markdown.

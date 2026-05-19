@@ -12,7 +12,7 @@ model: slashai/<nama-model>
 Body juga memuat field:
 
 ```json
-{"model": "slashai/gpt-5.5-instant"}
+{"model": "slashai/gemini-3-flash"}
 ```
 
 
@@ -31,8 +31,8 @@ Pengguna tetap dapat mengganti API Base URL jika memakai gateway kompatibel lain
 
 ## Rekomendasi Cepat
 
-- **Auto pilih model hemat biaya**: `slashai/gpt-5.5-instant`
-- **Auto pilih model kualitas tinggi**: `slashai/gpt-5.5`
+- **Auto pilih model hemat biaya**: `slashai/gemini-3-flash`
+- **Auto pilih model kualitas tinggi**: `slashai/gemini-3.1-pro` dengan fallback otomatis ke model flash jika provider menolak akses premium/deposit
 - **Manual yang kuat untuk tulisan akademik**: `slashai/claude-sonnet-4.7`, `slashai/gpt-5.4-pro`, `slashai/gemini-3.1-pro`
 
 ## Claude
@@ -136,3 +136,15 @@ Pengguna tetap dapat mengganti API Base URL jika memakai gateway kompatibel lain
 ## Catatan akses/deposit
 
 Jika API menolak request dengan pesan `Deposit required to unlock pre`, itu bukan berarti API key pasti salah. Biasanya akun/provider belum membuka akses untuk model tertentu. Coba lakukan deposit/top up pada provider atau pilih model lain yang lebih ringan, misalnya `slashai/gemini-3-flash` atau `slashai/deepseek-v4-flash`.
+
+
+## Catatan akses/deposit SlashAI
+
+Jika server mengembalikan pesan seperti `Deposit required to unlock premium models`, itu bukan berarti API key salah. Artinya model yang dipilih membutuhkan saldo/deposit atau akses premium di provider. Sistem versi ini akan mencoba fallback otomatis ke model ringan/flash pada mode otomatis. Untuk menghindari error berulang, gunakan mode manual dan pilih salah satu model ringan berikut:
+
+- `slashai/gemini-3-flash`
+- `slashai/deepseek-v4-flash`
+- `slashai/mimo-v2-flash`
+- `slashai/Step-3.5-Flash`
+
+API key tetap tidak disimpan ke project state, export ZIP, XLSX, DOCX, atau Markdown.

@@ -515,8 +515,8 @@ def init_state():
         "ai_config": {
             "mode": "Offline Mode",
             "model_selection": "Auto pilih model hemat biaya",
-            "model": "slashai/gpt-5.5-instant",
-            "manual_model": "slashai/gpt-5.5-instant",
+            "model": "slashai/gemini-3-flash",
+            "manual_model": "slashai/gemini-3-flash",
             "selected_model_source": "fallback",
         },
         "ai_outputs": {},
@@ -2312,7 +2312,7 @@ SLASHAI_MODEL_CATALOG = {
 SLASHAI_ALL_MODELS = [m for group in SLASHAI_MODEL_CATALOG.values() for m in group]
 
 ECONOMY_MODEL_FALLBACK = "slashai/gemini-3-flash"
-QUALITY_MODEL_FALLBACK = "slashai/gpt-5.5"
+QUALITY_MODEL_FALLBACK = "slashai/gemini-3.1-pro"
 ECONOMY_MODEL_PRIORITY = [
     # Prioritise lighter/flash models first because some premium/pre models may require deposit.
     "slashai/gemini-3-flash",
@@ -2329,18 +2329,32 @@ ECONOMY_MODEL_PRIORITY = [
     "gpt-5.5-instant", "gpt-5.4-mini", "gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini", "o4-mini", "o3-mini",
 ]
 QUALITY_MODEL_PRIORITY = [
+    # Start with stronger non-GPT/provider-generic choices first. SlashAI GPT 5.x premium models may require deposit.
+    "slashai/gemini-3.1-pro",
+    "slashai/deepseek-v4-pro",
+    "slashai/Qwen3.6-Max-Preview",
+    "slashai/claude-sonnet-4.7",
+    "slashai/GLM-5.1",
+    "slashai/gemini-3-flash",
+    "slashai/deepseek-v4-flash",
+    "slashai/mimo-v2-pro",
     "slashai/gpt-5.5",
     "slashai/gpt-5.4-pro",
     "slashai/gpt-5.4",
     "slashai/gpt-5.2",
     "slashai/gpt-5.1",
-    "slashai/claude-sonnet-4.7",
     "slashai/claude-opus-4.7",
-    "slashai/gemini-3.1-pro",
-    "slashai/deepseek-v4-pro",
-    "slashai/Qwen3.6-Max-Preview",
-    "slashai/GLM-5.1",
     "gpt-5.5", "gpt-5.4", "gpt-5.2", "gpt-5.1", "gpt-5", "gpt-4.1", "gpt-4o", "o3",
+]
+
+SAFE_RETRY_MODEL_PRIORITY = [
+    "slashai/gemini-3-flash",
+    "slashai/deepseek-v4-flash",
+    "slashai/mimo-v2-flash",
+    "slashai/Step-3.5-Flash",
+    "slashai/gpt-5.4-nano",
+    "slashai/gpt-5-nano",
+    "slashai/gpt-5-mini",
 ]
 
 
@@ -2496,8 +2510,35 @@ def get_effective_ai_model(api_key: str = "") -> tuple[str, str]:
     st.session_state.ai_config = ai_cfg
     return model, source
 
-def call_openai_responses_api(api_key: str, model: str, user_prompt: str, api_base: str | None = None) -> tuple[bool, str]:
-    """Call OpenAI-compatible Chat Completions API using POST {api_base}/v1/chat/completions."""
+
+def is_deposit_or_access_error(message: str) -> bool:
+    """Detect provider-side model access/deposit errors from a user-facing message."""
+    text = str(message or "").lower()
+    return any(token in text for token in [
+        "deposit required", "unlock premium", "unlock pre", "saldo", "top up", "topup",
+        "access_denied", "access restricted", "belum memiliki akses saldo", "akses premium",
+    ])
+
+
+def build_retry_model_list(primary_model: str, strategy: str = "") -> list[str]:
+    """Return safe fallback models without repeating the primary model."""
+    candidates = []
+    # For high-quality automatic mode, try pro/non-GPT first, then safe flash.
+    if strategy == "Auto pilih model kualitas tinggi":
+        candidates.extend(["slashai/gemini-3.1-pro", "slashai/deepseek-v4-pro", "slashai/Qwen3.6-Max-Preview"])
+    candidates.extend(SAFE_RETRY_MODEL_PRIORITY)
+    seen = {str(primary_model or "").strip().lower()}
+    out = []
+    for model_id in candidates:
+        key = str(model_id).strip().lower()
+        if key and key not in seen:
+            seen.add(key)
+            out.append(model_id)
+    return out
+
+
+def call_chat_completions_once(api_key: str, model: str, user_prompt: str, api_base: str | None = None) -> tuple[bool, str]:
+    """Single OpenAI-compatible Chat Completions request without automatic retry."""
     if not api_key:
         return False, "API key belum diisi. Gunakan Offline Mode atau masukkan API key pribadi terlebih dahulu."
     base = normalize_api_base_url(api_base or get_personal_api_base_url())
@@ -2538,19 +2579,17 @@ def call_openai_responses_api(api_key: str, model: str, user_prompt: str, api_ba
                 message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
                 content = message.get("content") if isinstance(message, dict) else None
                 if isinstance(content, list):
-                    # Some OpenAI-compatible APIs return content parts. Join text-like parts.
                     parts = []
                     for part in content:
                         if isinstance(part, dict):
                             parts.append(str(part.get("text") or part.get("content") or ""))
                         else:
                             parts.append(str(part))
-                    content = "\n".join([p for p in parts if p])
+                    content = "\n".join([part for part in parts if part])
                 if content:
                     return True, str(content)
                 if isinstance(choices[0], dict) and choices[0].get("text"):
                     return True, str(choices[0].get("text"))
-            # Some providers use alternative keys.
             for key in ["content", "text", "message", "response", "output"]:
                 if payload.get(key):
                     return True, str(payload.get(key))
@@ -2564,6 +2603,45 @@ def call_openai_responses_api(api_key: str, model: str, user_prompt: str, api_ba
         return False, f"Gagal terhubung ke API base {base}: {exc}"
     except Exception as exc:
         return False, f"Gagal membuat AI insight: {exc}"
+
+def call_openai_responses_api(api_key: str, model: str, user_prompt: str, api_base: str | None = None) -> tuple[bool, str]:
+    """Call Chat Completions API; retry lighter models when SlashAI denies premium/deposit access."""
+    if not api_key:
+        return False, "API key belum diisi. Gunakan Offline Mode atau masukkan API key pribadi terlebih dahulu."
+
+    ai_cfg = st.session_state.get("ai_config", {})
+    strategy = ai_cfg.get("model_selection", "Auto pilih model hemat biaya")
+    primary_model = model or ECONOMY_MODEL_FALLBACK
+
+    ok, result = call_chat_completions_once(api_key, primary_model, user_prompt, api_base)
+    if ok:
+        st.session_state["last_successful_ai_model"] = primary_model
+        return True, result
+
+    # Manual mode should respect the model chosen by the user and show a clear diagnosis.
+    if strategy == "Pilih manual" or not is_deposit_or_access_error(result):
+        return False, result
+
+    tried = [primary_model]
+    retry_errors = []
+    for fallback_model in build_retry_model_list(primary_model, strategy):
+        tried.append(fallback_model)
+        ok2, result2 = call_chat_completions_once(api_key, fallback_model, user_prompt, api_base)
+        if ok2:
+            st.session_state["last_successful_ai_model"] = fallback_model
+            note = (
+                f"\n\n---\nCatatan sistem: model awal `{primary_model}` ditolak oleh provider karena akses/deposit. "
+                f"Sistem otomatis memakai fallback `{fallback_model}`. Model yang dicoba: {', '.join(tried)}."
+            )
+            return True, str(result2) + note
+        retry_errors.append(f"{fallback_model}: {str(result2)[:280]}")
+
+    return False, (
+        f"Model awal `{primary_model}` ditolak dan semua fallback ringan juga gagal. "
+        "Ini biasanya karena akun/API key belum memiliki saldo/deposit atau provider membatasi akses model. "
+        "Coba lakukan deposit/top up di SlashAI, tunggu reset yang disebut server, atau pilih manual model lain. "
+        f"Model yang dicoba: {', '.join(tried)}. Detail terakhir: {retry_errors[-1] if retry_errors else result}"
+    )
 
 
 def test_chat_completion_connection(api_key: str, model: str, api_base: str | None = None) -> tuple[bool, str]:
